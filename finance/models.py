@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from students.models import Parent
 from accounts.models import User
@@ -8,14 +9,21 @@ class Invoice(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     is_paid = models.BooleanField(default=False)
     due_date = models.DateField()
-
 class Payment(models.Model):
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='payments'
+    )
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2)
     paid_at = models.DateTimeField(auto_now_add=True)
-    paid_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-
-
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,  # or User
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_payments'  # <-- unique related_name
+    )
 from django.db import models
 from employees.models import Employee
 

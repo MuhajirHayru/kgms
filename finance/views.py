@@ -1,46 +1,82 @@
-from rest_framework import generics
-from .models import Invoice, Payment
-from .serializers import InvoiceSerializer, PaymentSerializer
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from django.utils import timezone
+
+from .models import Invoice, Payment, Payroll
+from .serializers import InvoiceSerializer, PaymentSerializer, PayrollSerializer
+
+
+# ===============================
+# 🔐 PERMISSIONS
+# ===============================
+
+class IsDirectorOrAccountant(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ['DIRECTOR', 'ACCOUNTANT']
+
+
+class IsOwnerOrStaff(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return (
+            request.user.role in ['DIRECTOR', 'ACCOUNTANT']
+            or obj.employee.user == request.user
+        )
+
+
+# ===============================
+# 📄 INVOICE VIEWS
+# ===============================
 
 class InvoiceCreateView(generics.CreateAPIView):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
+    permission_classes = [IsDirectorOrAccountant]
+
+
+class InvoiceListView(generics.ListAPIView):
+    serializer_class = InvoiceSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # Parent sees only their children's invoices
+        if user.role == "PARENT":
+            return Invoice.objects.filter(student__parent=user)
+
+        # Director & Accountant see all
+        if user.role in ['DIRECTOR', 'ACCOUNTANT']:
+            return Invoice.objects.all()
+
+        return Invoice.objects.none()
+
+
+# ===============================
+# 💳 PAYMENT VIEWS
+# ===============================
 
 class PaymentCreateView(generics.CreateAPIView):
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
 
-from rest_framework import generics, permissions
-from .models import Payroll
-from .serializers import PayrollSerializer
 
-# Serializer
-from .serializers import PayrollSerializer
+class PaymentListView(generics.ListAPIView):
+    serializer_class = PaymentSerializer
 
-# Custom permission
-from rest_framework.permissions import BasePermission
+    def get_queryset(self):
+        user = self.request.user
 
-class IsDirectorOrAccountant(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.role in ['DIRECTOR', 'ACCOUNTANT']
+        if user.role == "PARENT":
+            return Payment.objects.filter(invoice__student__parent=user)
 
-class IsOwnerOrStaff(BasePermission):
-    def has_object_permission(self, request, view, obj):
-        return request.user.role in ['DIRECTOR', 'ACCOUNTANT'] or obj.employee.user == request.user
-from rest_framework import generics, permissions, status
-from rest_framework.response import Response
-from .models import Payroll
-from .serializers import PayrollSerializer
-from django.utils import timezone
+        if user.role in ['DIRECTOR', 'ACCOUNTANT']:
+            return Payment.objects.all()
 
-# Custom permissions
-class IsDirectorOrAccountant(permissions.BasePermission):
-    def has_permission(self, request, view):
-        return request.user.role in ['DIRECTOR', 'ACCOUNTANT']
+        return Payment.objects.none()
 
-class IsOwnerOrStaff(permissions.BasePermission):
-    def has_object_permission(self, request, view, obj):
-        return request.user.role in ['DIRECTOR', 'ACCOUNTANT'] or obj.employee.user == request.user
+
+# ===============================
+# 💰 PAYROLL VIEWS
+# ===============================
 
 # List payrolls
 class PayrollListView(generics.ListAPIView):
@@ -48,9 +84,13 @@ class PayrollListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+
         if user.role in ['DIRECTOR', 'ACCOUNTANT']:
             return Payroll.objects.all()
+
+        # Employee sees only their own payroll
         return Payroll.objects.filter(employee__user=user)
+
 
 # Detail payroll
 class PayrollDetailView(generics.RetrieveAPIView):
@@ -58,10 +98,18 @@ class PayrollDetailView(generics.RetrieveAPIView):
     queryset = Payroll.objects.all()
     permission_classes = [IsOwnerOrStaff]
 
-# Generate payroll for one employee
+
+# Generate payroll
 class PayrollGenerateView(generics.CreateAPIView):
     serializer_class = PayrollSerializer
     permission_classes = [IsDirectorOrAccountant]
+
+    def perform_create(self, serializer):
+        serializer.save(
+            approved=False,
+            paid=False
+        )
+
 
 # Approve payroll
 class PayrollApproveView(generics.UpdateAPIView):
@@ -75,6 +123,7 @@ class PayrollApproveView(generics.UpdateAPIView):
         payroll.save()
         return Response(PayrollSerializer(payroll).data)
 
+
 # Pay payroll
 class PayrollPayView(generics.UpdateAPIView):
     serializer_class = PayrollSerializer
@@ -83,9 +132,15 @@ class PayrollPayView(generics.UpdateAPIView):
 
     def patch(self, request, *args, **kwargs):
         payroll = self.get_object()
+
         if not payroll.approved:
-            return Response({"error": "Payroll must be approved first"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Payroll must be approved first"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         payroll.paid = True
         payroll.paid_at = timezone.now()
         payroll.save()
+
         return Response(PayrollSerializer(payroll).data)

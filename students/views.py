@@ -1,6 +1,3 @@
-from django.shortcuts import render
-
-# Create your views here.
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from .models import Student, Parent, Invoice, Payment
@@ -8,13 +5,13 @@ from .serializers import StudentSerializer, ParentSerializer, InvoiceSerializer,
 
 # ---- Parent Views ----
 class ParentListCreateView(generics.ListCreateAPIView):
-    queryset = Parent.objects.all()
+    queryset = Parent.objects.filter(role='PARENT')
     serializer_class = ParentSerializer
     permission_classes = [IsAuthenticated]
 
 
 class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Parent.objects.all()
+    queryset = Parent.objects.filter(role='PARENT')
     serializer_class = ParentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -33,14 +30,17 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 # ---- Invoice Views ----
-class InvoiceCreateView(generics.ListCreateAPIView):
+class InvoiceListCreateView(generics.ListCreateAPIView):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
     permission_classes = [IsAuthenticated]
 
 
 # ---- Payment Views ----
-class PaymentCreateView(generics.ListCreateAPIView):
+class PaymentListCreateView(generics.ListCreateAPIView):
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
     permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(paid_by=self.request.user)
