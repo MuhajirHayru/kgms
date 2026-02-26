@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import User, ParentProfile
+from django.db import IntegrityError, transaction
 
 # -------------------------------
 # Parent Profile Serializer
@@ -16,29 +17,59 @@ class ParentProfileSerializer(serializers.ModelSerializer):
 class ParentRegistrationSerializer(serializers.Serializer):
     phone_number = serializers.CharField(required=True)
     password = serializers.CharField(write_only=True, required=True)
-    full_name = serializers.CharField(required=True)
+    full_name = serializers.CharField(required=False, allow_blank=True)
+    first_name = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    last_name = serializers.CharField(required=False, allow_blank=True, write_only=True)
     occupation = serializers.CharField(required=False, allow_blank=True)
     relationship_to_student = serializers.ChoiceField(
         choices=[('FATHER', 'Father'), ('MOTHER', 'Mother'), ('GUARDIAN', 'Guardian')]
     )
 
-    def create(self, validated_data):
-        # Create the User
-        user = User.objects.create(
-            phone_number=validated_data['phone_number'],
-            role='PARENT'
-        )
-        user.set_password(validated_data['password'])
-        user.save()
+    def validate(self, attrs):
+        full_name = (attrs.get("full_name") or "").strip()
+        first_name = (attrs.get("first_name") or "").strip()
+        last_name = (attrs.get("last_name") or "").strip()
 
-        # Create ParentProfile
-        parent_profile = ParentProfile.objects.create(
-            user=user,
-            full_name=validated_data['full_name'],
-            occupation=validated_data.get('occupation', ''),
-            relationship_to_student=validated_data['relationship_to_student']
-        )
-        return parent_profile
+        if not full_name:
+            full_name = f"{first_name} {last_name}".strip()
+
+        if not full_name:
+            raise serializers.ValidationError(
+                {"full_name": ["Provide full_name or first_name/last_name."]}
+            )
+
+        attrs["full_name"] = full_name
+        return attrs
+
+    def validate_phone_number(self, value):
+        if User.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("A user with this phone number already exists.")
+        return value
+
+    def create(self, validated_data):
+        try:
+            with transaction.atomic():
+                # Create the User
+                user = User.objects.create(
+                    full_name=validated_data['full_name'],
+                    phone_number=validated_data['phone_number'],
+                    role='PARENT'
+                )
+                user.set_password(validated_data['password'])
+                user.save()
+
+                # Create ParentProfile
+                parent_profile = ParentProfile.objects.create(
+                    user=user,
+                    full_name=validated_data['full_name'],
+                    occupation=validated_data.get('occupation', ''),
+                    relationship_to_student=validated_data['relationship_to_student']
+                )
+                return parent_profile
+        except IntegrityError:
+            raise serializers.ValidationError(
+                {"phone_number": ["A user with this phone number already exists."]}
+            )
 
 
 # -------------------------------

@@ -6,7 +6,7 @@ from .models import Student, Parent, Invoice, Payment
 class ParentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Parent
-        fields = ['id', 'username', 'first_name', 'last_name', ]  # Limit fields for security
+        fields = ['id', 'phone_number', 'full_name']
 
 
 class StudentSerializer(serializers.ModelSerializer):

@@ -14,6 +14,10 @@ class User(AbstractUser):
     )
 
     username = None  # remove default username field
+    first_name = None
+    last_name = None
+    email = None
+    full_name = models.CharField(max_length=150, blank=True, default="")
     phone_number = models.CharField(max_length=20, unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     must_change_password = models.BooleanField(default=True)
@@ -22,7 +26,8 @@ class User(AbstractUser):
     REQUIRED_FIELDS = []
 
     def __str__(self):
-        return f"{self.phone_number} ({self.role})"
+        label = self.full_name or self.phone_number
+        return f"{label} ({self.role})"
 
 
 # -------------------------------

@@ -4,13 +4,13 @@ from .models import Student, Parent, Invoice, Payment
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
     list_display = ('first_name', 'last_name', 'dob', 'parent', 'active')
-    search_fields = ('first_name', 'last_name', 'parent__first_name', 'parent__last_name')
+    search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number')
 
 
 @admin.register(Parent)
 class ParentAdmin(admin.ModelAdmin):
-    list_display = ('first_name', 'last_name', 'phone_number', 'email')
-    search_fields = ('first_name', 'last_name', 'phone_number', 'email')
+    list_display = ('full_name', 'phone_number')
+    search_fields = ('full_name', 'phone_number')
 
 
 @admin.register(Invoice)

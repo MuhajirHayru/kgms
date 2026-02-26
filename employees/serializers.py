@@ -11,16 +11,14 @@ User = get_user_model()
 # ================================
 class EmployeeSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source='user.phone_number', read_only=True)
-    first_name = serializers.CharField(source='user.first_name', read_only=True)
-    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    full_name = serializers.CharField(source='user.full_name', read_only=True)
 
     class Meta:
         model = Employee
         fields = [
             'id',
             'phone_number',
-            'first_name',
-            'last_name',
+            'full_name',
             'role',
             'salary',
         ]
@@ -48,8 +46,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
 # EMPLOYEE REGISTRATION SERIALIZER
 # ================================
 class EmployeeRegistrationSerializer(serializers.Serializer):
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
+    full_name = serializers.CharField()
     phone_number = serializers.CharField()
     role = serializers.ChoiceField(choices=Employee.ROLE_CHOICES)
     salary = serializers.DecimalField(max_digits=10, decimal_places=2)
@@ -75,8 +72,7 @@ class EmployeeRegistrationSerializer(serializers.Serializer):
 
         # Create User
         user = User.objects.create(
-            first_name=validated_data["first_name"],
-            last_name=validated_data["last_name"],
+            full_name=validated_data["full_name"],
             phone_number=phone,
             role=user_role,
         )
