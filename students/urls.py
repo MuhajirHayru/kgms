@@ -4,8 +4,8 @@ from .views import (
     StudentDetailView,
     ParentListCreateView,
     ParentDetailView,
-    InvoiceCreateView,
-    PaymentCreateView
+    InvoiceListCreateView,
+    PaymentListCreateView
 )
 
 urlpatterns = [
@@ -18,6 +18,6 @@ urlpatterns = [
     path('parents/<int:pk>/', ParentDetailView.as_view(), name='parent-detail'),
 
     # Finance
-    path('invoices/', InvoiceCreateView.as_view(), name='invoice-create'),
-    path('payments/', PaymentCreateView.as_view(), name='payment-create'),
+    path('invoices/', InvoiceListCreateView.as_view(), name='invoice-create'),
+    path('payments/', PaymentListCreateView.as_view(), name='payment-create'),
 ]

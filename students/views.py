@@ -1,5 +1,5 @@
 from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import Student, Parent, Invoice, Payment
 from .serializers import StudentSerializer, ParentSerializer, InvoiceSerializer, PaymentSerializer
 
@@ -20,7 +20,7 @@ class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
 class StudentListCreateView(generics.ListCreateAPIView):
     queryset = Student.objects.all()
     serializer_class = StudentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
