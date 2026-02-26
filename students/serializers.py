@@ -17,7 +17,8 @@ class StudentSerializer(serializers.ModelSerializer):
     certificates = serializers.ListField(
         child=serializers.FileField(),
         write_only=True,
-        required=False
+        required=False,
+        allow_empty=True
     )
     certificate_files = serializers.SerializerMethodField(read_only=True)
 
@@ -31,6 +32,9 @@ class StudentSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'certificate_files']
+        extra_kwargs = {
+            'student_photo': {'required': False, 'allow_null': True},
+        }
 
     def get_certificate_files(self, obj):
         request = self.context.get("request")
