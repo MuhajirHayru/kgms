@@ -41,6 +41,7 @@ class ParentProfile(models.Model):
         max_length=20,
         choices=(('FATHER', 'Father'), ('MOTHER', 'Mother'), ('GUARDIAN', 'Guardian'))
     )
+    
 
     def __str__(self):
         return f"{self.full_name} ({self.relationship_to_student})"

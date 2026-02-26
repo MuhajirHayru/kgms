@@ -8,13 +8,19 @@ from .serializers import StudentSerializer, ParentSerializer, InvoiceSerializer,
 class ParentListCreateView(generics.ListCreateAPIView):
     queryset = Parent.objects.filter(role='PARENT')
     serializer_class = ParentSerializer
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 
 class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Parent.objects.filter(role='PARENT')
     serializer_class = ParentSerializer
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 
 # ---- Student Views ----

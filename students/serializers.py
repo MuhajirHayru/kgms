@@ -10,6 +10,8 @@ class ParentSerializer(serializers.ModelSerializer):
 
 
 class StudentSerializer(serializers.ModelSerializer):
+    dob = serializers.DateField(input_formats=["%d-%m-%Y", "%Y-%m-%d"])
+    transport = serializers.ChoiceField(choices=Student._meta.get_field("transport").choices, required=True)
     parent = ParentSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(
         queryset=Parent.objects.all(), source='parent', write_only=True
@@ -26,7 +28,7 @@ class StudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = [
             'id', 'first_name', 'last_name', 'dob', 'gender',
-            'phone_number', 'address', 'emergency_contact',
+            'transport', 'address', 'emergency_contact',
             'parent', 'parent_id', 'class_teacher', 'class_name', 'active',
             'student_photo', 'certificates', 'certificate_files',
             'created_at', 'updated_at'
@@ -35,6 +37,15 @@ class StudentSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'student_photo': {'required': False, 'allow_null': True},
         }
+
+    def validate(self, attrs):
+        transport = attrs.get("transport")
+        address = (attrs.get("address") or "").strip()
+        if transport == "BUS" and not address:
+            raise serializers.ValidationError(
+                {"address": ["Address is required when transport is BUS."]}
+            )
+        return attrs
 
     def get_certificate_files(self, obj):
         request = self.context.get("request")

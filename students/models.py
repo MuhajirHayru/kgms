@@ -13,12 +13,17 @@ GENDER_CHOICES = (
     ('O', 'Other'),
 )
 
+TRANSPORT_CHOICES = (
+    ('BUS', 'Bus'),
+    ('foot', 'foot'),
+)
+
 class Student(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     dob = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
-    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    transport = models.CharField(max_length=10, choices=TRANSPORT_CHOICES, default='OTHER')
     address = models.TextField(blank=True, null=True)
     emergency_contact = models.CharField(max_length=50, blank=True, null=True)
 

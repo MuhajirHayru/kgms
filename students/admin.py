@@ -9,7 +9,7 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(Parent)
 class ParentAdmin(admin.ModelAdmin):
-    list_display = ('full_name', 'phone_number')
+    list_display = ('id', 'full_name', 'phone_number')
     search_fields = ('full_name', 'phone_number')
 
 
