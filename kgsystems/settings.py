@@ -55,6 +55,9 @@ INSTALLED_APPS = [
 ]
 ASGI_APPLICATION = "kgmsystems.asgi.application"
 AUTH_USER_MODEL = 'accounts.User'
+AUTHENTICATION_BACKENDS = [
+    'accounts.backends.PhoneOrSuperuserUsernameBackend',
+]
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',

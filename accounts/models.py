@@ -1,9 +1,44 @@
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 
 # -------------------------------
 # Core User Model
 # -------------------------------
+class UserManager(BaseUserManager):
+    use_in_migrations = True
+
+    def _create_user(self, phone_number, password, **extra_fields):
+        if not phone_number:
+            raise ValueError("The phone number must be set")
+        user = self.model(phone_number=phone_number, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_user(self, phone_number, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", False)
+        extra_fields.setdefault("is_superuser", False)
+        extra_fields.setdefault("role", "PARENT")
+        return self._create_user(phone_number, password, **extra_fields)
+
+    def create_superuser(self, phone_number, password=None, **extra_fields):
+        username = extra_fields.get("username")
+        if not username:
+            raise ValueError("Superuser must have a username.")
+
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault("role", "DIRECTOR")
+
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+
+        return self._create_user(phone_number, password, **extra_fields)
+
+
 class User(AbstractUser):
     ROLE_CHOICES = (
         ('DIRECTOR', 'Director'),
@@ -13,7 +48,7 @@ class User(AbstractUser):
         ('PARENT', 'Parent'),
     )
 
-    username = None  # remove default username field
+    username = models.CharField(max_length=150, unique=True, null=True, blank=True, default=None)
     first_name = None
     last_name = None
     email = None
@@ -23,7 +58,8 @@ class User(AbstractUser):
     must_change_password = models.BooleanField(default=True)
 
     USERNAME_FIELD = "phone_number"
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS = ["username"]
+    objects = UserManager()
 
     def __str__(self):
         label = self.full_name or self.phone_number
