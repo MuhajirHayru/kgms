@@ -1,18 +1,12 @@
 from django.urls import path
-from .views import (
-    ChangePasswordView,
-    EmployeeRegisterView,
-    AttendanceListView,
-    AttendanceCreateView,
-    AttendanceDetailView,
-    AttendanceUpdateView,
-)
+from .views import *
+    
 
 urlpatterns = [
     # Employee management
     path('register/', EmployeeRegisterView.as_view(), name='employee-register'),  # Director registration API
     path('employees/change-password/', ChangePasswordView.as_view(), name='change-password'),
-
+    path('', EmployeeListView.as_view(),name='employeelist'),
     # Attendance management
     path('attendance/', AttendanceListView.as_view(), name='attendance-list'),
     path('attendance/create/', AttendanceCreateView.as_view(), name='attendance-create'),

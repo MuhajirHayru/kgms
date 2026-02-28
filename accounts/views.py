@@ -45,3 +45,12 @@ class ParentChangePasswordView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+# accounts/views.py
+# accounts/views.py
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import CustomTokenObtainPairSerializer
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer

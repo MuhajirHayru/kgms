@@ -71,7 +71,16 @@ class ParentRegistrationSerializer(serializers.Serializer):
                 {"phone_number": ["A user with this phone number already exists."]}
             )
 
+# accounts/serializers.py
+# accounts/serializers.py
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        # Add role to login response
+        data['role'] = self.user.role
+        return data
 # -------------------------------
 # Change Password Serializer
 # -------------------------------
