@@ -3,6 +3,7 @@ from django.db import models
 from django.conf import settings
 from employees.models import Employee
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -46,6 +47,7 @@ class Student(models.Model):
     )
 
     class_name = models.CharField(max_length=50)
+    monthly_tuition_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     active = models.BooleanField(default=True)
     student_photo = models.FileField(upload_to="students/photos/", blank=True, null=True)
 
@@ -79,9 +81,14 @@ class Invoice(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     due_date = models.DateField()
     is_paid = models.BooleanField(default=False)
+    penalty_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def __str__(self):
         return f"Invoice - {self.student} - {self.month}"
+
+    @property
+    def total_amount_due(self):
+        return self.amount + self.penalty_amount
 
 
 class Payment(models.Model):
@@ -102,6 +109,47 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.amount} - {self.invoice}"
+
+
+class PenaltySetting(models.Model):
+    # Keep a single active settings row by convention.
+    penalty_per_day = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Penalty/day: {self.penalty_per_day}"
+
+    @classmethod
+    def get_current(cls):
+        obj, _ = cls.objects.get_or_create(id=1, defaults={"penalty_per_day": 0})
+        return obj
+
+
+class ParentNotification(models.Model):
+    NOTIFICATION_TYPES = (
+        ("REMINDER", "Reminder"),
+        ("THANK_YOU", "Thank You"),
+    )
+
+    parent = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="parent_notifications",
+        limit_choices_to={"role": "PARENT"},
+    )
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="notifications")
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="notifications")
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=120)
+    message = models.TextField()
+    sent_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-sent_at"]
+
+    def __str__(self):
+        return f"{self.notification_type} - {self.parent} - {self.student}"
 
 
 class Parent(User):

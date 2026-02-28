@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Employee, Attendance
-from accounts.utils import generate_random_password
 
 User = get_user_model()
 
@@ -48,6 +47,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
 class EmployeeRegistrationSerializer(serializers.Serializer):
     full_name = serializers.CharField()
     phone_number = serializers.CharField()
+    password = serializers.CharField(write_only=True)
     role = serializers.ChoiceField(choices=Employee.ROLE_CHOICES)
     salary = serializers.DecimalField(max_digits=10, decimal_places=2)
 
@@ -57,9 +57,6 @@ class EmployeeRegistrationSerializer(serializers.Serializer):
         # Ensure unique phone number
         if User.objects.filter(phone_number=phone).exists():
             raise serializers.ValidationError("Phone number already exists")
-
-        # Generate temporary password
-        temp_password = generate_random_password()
 
         # Map Employee role to User role
         role_map = {
@@ -76,7 +73,7 @@ class EmployeeRegistrationSerializer(serializers.Serializer):
             phone_number=phone,
             role=user_role,
         )
-        user.set_password(temp_password)
+        user.set_password(validated_data["password"])
         user.save()
 
         # Create Employee profile
@@ -89,5 +86,4 @@ class EmployeeRegistrationSerializer(serializers.Serializer):
         # Return credentials for API response
         return {
             "username": phone,
-            "temporary_password": temp_password
         }

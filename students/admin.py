@@ -1,9 +1,17 @@
 from django.contrib import admin
-from .models import Student, Parent, Invoice, Payment, StudentCertificate
+from .models import (
+    Invoice,
+    Parent,
+    ParentNotification,
+    Payment,
+    PenaltySetting,
+    Student,
+    StudentCertificate,
+)
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('first_name', 'last_name', 'dob', 'parent', 'active', 'student_photo')
+    list_display = ('first_name', 'last_name', 'dob', 'parent', 'monthly_tuition_fee', 'active', 'student_photo')
     search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number')
 
 
@@ -15,7 +23,7 @@ class ParentAdmin(admin.ModelAdmin):
 
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
-    list_display = ('student', 'month', 'amount', 'due_date', 'is_paid')
+    list_display = ('student', 'month', 'amount', 'penalty_amount', 'due_date', 'is_paid')
     list_filter = ('is_paid', 'month')
 
 
@@ -29,3 +37,15 @@ class PaymentAdmin(admin.ModelAdmin):
 class StudentCertificateAdmin(admin.ModelAdmin):
     list_display = ('student', 'file', 'uploaded_at')
     search_fields = ('student__first_name', 'student__last_name')
+
+
+@admin.register(PenaltySetting)
+class PenaltySettingAdmin(admin.ModelAdmin):
+    list_display = ('id', 'penalty_per_day', 'updated_at')
+
+
+@admin.register(ParentNotification)
+class ParentNotificationAdmin(admin.ModelAdmin):
+    list_display = ('parent', 'student', 'notification_type', 'sent_at')
+    list_filter = ('notification_type',)
+    search_fields = ('parent__full_name', 'parent__phone_number', 'student__first_name', 'student__last_name')

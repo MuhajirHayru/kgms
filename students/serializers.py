@@ -1,6 +1,15 @@
 # students/serializers.py
 from rest_framework import serializers
-from .models import Student, Parent, Invoice, Payment, StudentCertificate
+from django.utils import timezone
+from .models import (
+    Invoice,
+    Parent,
+    ParentNotification,
+    Payment,
+    PenaltySetting,
+    Student,
+    StudentCertificate,
+)
 
 
 class ParentSerializer(serializers.ModelSerializer):
@@ -30,7 +39,7 @@ class StudentSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'dob', 'gender',
             'transport', 'address', 'emergency_contact',
             'parent', 'parent_id', 'class_teacher', 'class_name', 'active',
-            'student_photo', 'certificates', 'certificate_files',
+            'student_photo', 'certificates', 'certificate_files', 'monthly_tuition_fee',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at', 'certificate_files']
@@ -70,11 +79,24 @@ class InvoiceSerializer(serializers.ModelSerializer):
     student_id = serializers.PrimaryKeyRelatedField(
         queryset=Student.objects.all(), source='student', write_only=True
     )
+    total_amount_due = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    passed_days = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Invoice
-        fields = ['id', 'student', 'student_id', 'month', 'amount', 'due_date', 'is_paid']
-        read_only_fields = ['is_paid']
+        fields = [
+            'id', 'student', 'student_id', 'month', 'amount', 'due_date',
+            'is_paid', 'penalty_amount', 'total_amount_due', 'passed_days'
+        ]
+        read_only_fields = ['is_paid', 'penalty_amount', 'total_amount_due', 'passed_days']
+
+    def get_passed_days(self, obj):
+        if obj.is_paid:
+            return 0
+        today = timezone.localdate()
+        if obj.due_date >= today:
+            return 0
+        return (today - obj.due_date).days
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -88,3 +110,35 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = ['id', 'invoice', 'invoice_id', 'amount', 'paid_at', 'paid_by']
         read_only_fields = ['paid_at', 'paid_by']
+
+
+class PenaltySettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PenaltySetting
+        fields = ['id', 'penalty_per_day', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ParentNotificationSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ParentNotification
+        fields = [
+            'id', 'notification_type', 'title', 'message',
+            'student', 'student_name', 'invoice', 'sent_at'
+        ]
+        read_only_fields = fields
+
+    def get_student_name(self, obj):
+        return f"{obj.student.first_name} {obj.student.last_name}"
+
+
+class AccountantDashboardSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    total_students = serializers.IntegerField()
+    paid_students = serializers.IntegerField()
+    unpaid_students = serializers.IntegerField()
+    overdue_students = serializers.IntegerField()
+    paid_invoices = InvoiceSerializer(many=True)
+    unpaid_invoices = InvoiceSerializer(many=True)
