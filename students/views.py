@@ -18,6 +18,7 @@ from .serializers import (
     PenaltySettingSerializer,
     StudentSerializer,
 )
+from finance.services import record_account_transaction
 
 
 class IsDirectorOrAccountant(permissions.BasePermission):
@@ -113,6 +114,15 @@ class PaymentListCreateView(generics.ListCreateAPIView):
         payment = serializer.save(paid_by=self.request.user)
         invoice = payment.invoice
         _apply_penalty(invoice)
+        record_account_transaction(
+            amount_delta=payment.amount,
+            entry_type="STUDENT_FEE",
+            description=(
+                f"Student fee received from {invoice.student.parent.full_name or invoice.student.parent.phone_number} "
+                f"for {invoice.student} ({invoice.month})."
+            ),
+            created_by=self.request.user,
+        )
 
         total_paid = invoice.payments.aggregate(total=Sum("amount")).get("total") or Decimal("0")
         total_due = invoice.total_amount_due
