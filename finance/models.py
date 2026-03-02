@@ -115,6 +115,8 @@ class DashboardNotification(models.Model):
         ("PAYROLL_APPROVAL", "Payroll Approval"),
         ("PAYROLL_REJECTION", "Payroll Rejection"),
         ("PAYROLL_PAID", "Payroll Paid"),
+        ("ANNOUNCEMENT", "Announcement"),
+        ("DRIVER_DELAY", "Driver Delay"),
         ("SYSTEM", "System"),
     )
 
@@ -186,6 +188,7 @@ class ExpenseRequest(models.Model):
     CATEGORY_CHOICES = (
         ("FUEL", "Fuel"),
         ("GARAGE", "Garage"),
+        ("MATERIAL", "Material"),
         ("OTHER", "Other"),
     )
     STATUS_CHOICES = (
@@ -202,6 +205,7 @@ class ExpenseRequest(models.Model):
     title = models.CharField(max_length=120)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     reason = models.TextField()
+    items = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
     admin_comment = models.TextField(blank=True, default="")
     reviewed_by = models.ForeignKey(
@@ -288,3 +292,36 @@ class CreditRepayment(models.Model):
 
     def __str__(self):
         return f"Repayment {self.amount} - Credit #{self.credit_request_id}"
+
+
+class Announcement(models.Model):
+    AUDIENCE_CHOICES = (
+        ("PARENTS", "Parents"),
+        ("STAFF", "Staff"),
+        ("ALL", "All"),
+    )
+
+    REASON_CHOICES = (
+        ("GENERAL", "General"),
+        ("CROWD", "Traffic/Crowd"),
+        ("FUEL", "Fuel"),
+        ("GARAGE", "Garage"),
+        ("OTHER", "Other"),
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="created_announcements",
+    )
+    audience = models.CharField(max_length=20, choices=AUDIENCE_CHOICES, default="ALL")
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES, default="GENERAL")
+    title = models.CharField(max_length=150)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.audience})"

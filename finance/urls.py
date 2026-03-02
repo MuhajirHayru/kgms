@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AnnouncementCreateView,
     BonusCreateView,
     CreditGiveView,
     CreditRepaymentCreateView,
@@ -9,6 +10,8 @@ from .views import (
     CreditReviewView,
     DashboardNotificationListView,
     DeductionCreateView,
+    DriverDelayAnnouncementView,
+    DriverStudentListView,
     EmployeeSalaryUpdateView,
     ExpenseMarkPaidView,
     ExpenseRequestCreateView,
@@ -69,6 +72,9 @@ urlpatterns = [
 
     path('payroll/settings/', PayrollSettingView.as_view(), name='payroll-settings'),
     path('employees/salary/', EmployeeSalaryUpdateView.as_view(), name='employee-salary-update'),
+    path('driver/students/', DriverStudentListView.as_view(), name='driver-student-list'),
+    path('driver/delay-alert/', DriverDelayAnnouncementView.as_view(), name='driver-delay-alert'),
+    path('announcements/create/', AnnouncementCreateView.as_view(), name='announcement-create'),
     path('notifications/', DashboardNotificationListView.as_view(), name='dashboard-notifications'),
     path('notifications/hide/', HideDashboardNotificationsView.as_view(), name='dashboard-notifications-hide'),
 ]

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
+    Announcement,
     Bonus,
     CreditRepayment,
     CreditRequest,
@@ -14,6 +15,7 @@ from .models import (
     PayrollSetting,
     SchoolAccount,
 )
+from students.models import Student
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -194,6 +196,7 @@ class ExpenseRequestSerializer(serializers.ModelSerializer):
             'title',
             'amount',
             'reason',
+            'items',
             'status',
             'admin_comment',
             'reviewed_by',
@@ -206,6 +209,13 @@ class ExpenseRequestSerializer(serializers.ModelSerializer):
             'requested_by', 'status', 'admin_comment', 'reviewed_by', 'reviewed_at',
             'paid_by', 'paid_at', 'created_at'
         ]
+
+    def validate(self, attrs):
+        category = attrs.get('category') or getattr(self.instance, 'category', None)
+        items = attrs.get('items')
+        if category == 'MATERIAL' and not items:
+            raise serializers.ValidationError({'items': 'Provide material items for material purchase requests.'})
+        return attrs
 
 
 class ExpenseReviewSerializer(serializers.Serializer):
@@ -257,3 +267,48 @@ class MonthlyReportSerializer(serializers.Serializer):
     total_expense = serializers.DecimalField(max_digits=14, decimal_places=2)
     profit = serializers.DecimalField(max_digits=14, decimal_places=2)
     entries = LedgerEntrySerializer(many=True)
+
+
+class DriverStudentDetailSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    parent_name = serializers.CharField(source='parent.full_name', read_only=True)
+    parent_phone = serializers.CharField(source='parent.phone_number', read_only=True)
+
+    class Meta:
+        model = Student
+        fields = [
+            'id',
+            'student_name',
+            'class_name',
+            'transport',
+            'address',
+            'emergency_contact',
+            'parent_name',
+            'parent_phone',
+        ]
+
+    def get_student_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+
+
+class AnnouncementSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = Announcement
+        fields = [
+            'id',
+            'audience',
+            'reason',
+            'title',
+            'message',
+            'created_by',
+            'created_by_name',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_by', 'created_by_name', 'created_at']
+
+
+class DriverDelayAlertSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=['CROWD', 'FUEL', 'GARAGE', 'OTHER'])
+    message = serializers.CharField(required=False, allow_blank=True)

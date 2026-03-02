@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from employees.models import Attendance, Employee
 
 from .models import (
+    Announcement,
     Bonus,
     CreditRequest,
     DashboardNotification,
@@ -26,9 +27,12 @@ from .models import (
     SchoolAccount,
 )
 from .serializers import (
+    AnnouncementSerializer,
     BonusSerializer,
     CreditRepaymentSerializer,
     CreditRequestSerializer,
+    DriverDelayAlertSerializer,
+    DriverStudentDetailSerializer,
     CreditReviewSerializer,
     DashboardNotificationSerializer,
     DeductionSerializer,
@@ -50,6 +54,7 @@ from .serializers import (
     SchoolAccountSerializer,
 )
 from .services import record_account_transaction
+from students.models import Student
 
 User = get_user_model()
 
@@ -76,6 +81,11 @@ class IsDirectorOrAccountant(permissions.BasePermission):
 class IsEmployeeUser(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and hasattr(request.user, 'employee_profile'))
+
+
+class IsDriver(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'DRIVER'
 
 
 class IsOwnerOrStaff(permissions.BasePermission):
@@ -105,6 +115,14 @@ def _notify_users(users, category, title, message):
     ]
     if payload:
         DashboardNotification.objects.bulk_create(payload)
+
+
+def _announcement_recipients(audience):
+    if audience == 'PARENTS':
+        return User.objects.filter(role='PARENT')
+    if audience == 'STAFF':
+        return User.objects.exclude(role='PARENT')
+    return User.objects.all()
 
 
 # -------------------------------
@@ -278,14 +296,26 @@ class ExpenseRequestCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save(requested_by=self.request.user)
-        accountants = User.objects.filter(role='ACCOUNTANT')
-        _notify_users(
-            accountants,
-            'SYSTEM',
-            'New Expense Request',
-            f'{self.request.user.full_name or self.request.user.phone_number} submitted an expense request.',
-        )
+        expense = serializer.save(requested_by=self.request.user)
+        requester = self.request.user
+        requester_name = requester.full_name or requester.phone_number
+
+        if requester.role == 'ACCOUNTANT':
+            recipients = User.objects.filter(role='DIRECTOR') | User.objects.filter(is_superuser=True)
+            _notify_users(
+                recipients.distinct(),
+                'SYSTEM',
+                'Expense Needs Approval',
+                f'Accountant {requester_name} submitted "{expense.title}" for approval.',
+            )
+        else:
+            accountants = User.objects.filter(role='ACCOUNTANT')
+            _notify_users(
+                accountants,
+                'SYSTEM',
+                'New Expense Request',
+                f'{requester_name} submitted an expense request.',
+            )
 
 
 class ExpenseRequestListView(generics.ListAPIView):
@@ -771,6 +801,63 @@ class EmployeeSalaryUpdateView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# -------------------------------
+# Driver + Announcement APIs
+# -------------------------------
+class DriverStudentListView(generics.ListAPIView):
+    serializer_class = DriverStudentDetailSerializer
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get_queryset(self):
+        return Student.objects.filter(active=True).select_related('parent').order_by('class_name', 'first_name', 'last_name')
+
+
+class AnnouncementCreateView(generics.CreateAPIView):
+    serializer_class = AnnouncementSerializer
+    permission_classes = [IsAuthenticated, IsDirectorOrSuperuser]
+
+    def perform_create(self, serializer):
+        announcement = serializer.save(created_by=self.request.user)
+        recipients = _announcement_recipients(announcement.audience)
+        _notify_users(
+            recipients,
+            'ANNOUNCEMENT',
+            announcement.title,
+            announcement.message,
+        )
+
+
+class DriverDelayAnnouncementView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request):
+        serializer = DriverDelayAlertSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        reason = serializer.validated_data['reason']
+        message = serializer.validated_data.get('message') or ''
+        reason_label = dict(Announcement.REASON_CHOICES).get(reason, reason)
+        driver_label = request.user.full_name or request.user.phone_number
+
+        title = f'Driver Delay Alert ({reason_label})'
+        text = (
+            f'Driver {driver_label} reported delay reason: {reason_label}. '
+            f'{message}'.strip()
+        )
+
+        Announcement.objects.create(
+            created_by=request.user,
+            audience='ALL',
+            reason=reason,
+            title=title,
+            message=text,
+        )
+
+        recipients = User.objects.filter(role__in=['PARENT', 'DIRECTOR', 'ACCOUNTANT']).distinct()
+        _notify_users(recipients, 'DRIVER_DELAY', title, text)
+        return Response({'message': 'Delay alert sent successfully.'}, status=status.HTTP_201_CREATED)
 
 
 # -------------------------------
