@@ -1,5 +1,6 @@
+from calendar import monthrange
+from datetime import date, timedelta
 from decimal import Decimal
-from datetime import timedelta
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -11,6 +12,7 @@ from rest_framework.views import APIView
 from .models import Invoice, Parent, ParentNotification, Payment, PenaltySetting, Student
 from .serializers import (
     AccountantDashboardSerializer,
+    AccountantMonthlyListSerializer,
     InvoiceSerializer,
     ParentNotificationSerializer,
     ParentSerializer,
@@ -39,6 +41,12 @@ class IsDirectorOrSuperuser(permissions.BasePermission):
 
 def _month_key(date_obj):
     return date_obj.strftime("%Y-%m")
+
+
+def _month_bounds(month_str):
+    year, month = map(int, month_str.split("-"))
+    last_day = monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
 
 
 def _apply_penalty(invoice):
@@ -211,6 +219,58 @@ class AccountantMonthlyDashboardView(APIView):
         }
         serializer = AccountantDashboardSerializer(payload)
         return Response(serializer.data)
+
+
+class AccountantMonthlyFeesView(APIView):
+    permission_classes = [IsAuthenticated, IsDirectorOrAccountant]
+
+    def _build_payload(self, month):
+        invoices = Invoice.objects.filter(month=month).select_related("student", "student__parent")
+        for invoice in invoices:
+            _apply_penalty(invoice)
+
+        paid_qs = invoices.filter(is_paid=True)
+        unpaid_qs = invoices.filter(is_paid=False)
+        overdue_qs = unpaid_qs.filter(due_date__lt=timezone.localdate())
+
+        payload = {
+            "month": month,
+            "total_students": invoices.count(),
+            "paid_students": paid_qs.count(),
+            "unpaid_students": unpaid_qs.count(),
+            "overdue_students": overdue_qs.count(),
+            "unpaid_invoices": unpaid_qs,
+        }
+        serializer = AccountantMonthlyListSerializer(payload)
+        return serializer.data
+
+    def get(self, request):
+        month = request.query_params.get("month") or _month_key(timezone.localdate())
+        return Response(self._build_payload(month))
+
+    def post(self, request):
+        month = request.data.get("month") or _month_key(timezone.localdate())
+        try:
+            start_date, end_date = _month_bounds(month)
+        except Exception:
+            return Response({"error": "Invalid month format. Use YYYY-MM."}, status=status.HTTP_400_BAD_REQUEST)
+
+        due_day = int(request.data.get("due_day", 5))
+        due_day = max(1, min(due_day, end_date.day))
+        due_date = start_date.replace(day=due_day)
+
+        active_students = Student.objects.filter(active=True).select_related("parent")
+        for student in active_students:
+            Invoice.objects.get_or_create(
+                student=student,
+                month=month,
+                defaults={
+                    "amount": student.monthly_tuition_fee,
+                    "due_date": due_date,
+                },
+            )
+
+        return Response(self._build_payload(month), status=status.HTTP_201_CREATED)
 
 
 class ReminderRunView(APIView):

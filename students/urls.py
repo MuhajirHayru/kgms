@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     AccountantMonthlyDashboardView,
+    AccountantMonthlyFeesView,
     GenerateCurrentMonthInvoicesView,
     ParentNotificationListView,
     StudentListCreateView,
@@ -27,6 +28,7 @@ urlpatterns = [
     path('payments/', PaymentListCreateView.as_view(), name='payment-create'),
     path('fees/generate-current-month/', GenerateCurrentMonthInvoicesView.as_view(), name='fees-generate-current'),
     path('fees/dashboard/', AccountantMonthlyDashboardView.as_view(), name='fees-dashboard'),
+    path('fees/monthly/', AccountantMonthlyFeesView.as_view(), name='fees-monthly'),
     path('fees/penalty-setting/', PenaltySettingView.as_view(), name='fees-penalty-setting'),
     path('fees/run-reminders/', ReminderRunView.as_view(), name='fees-run-reminders'),
     path('parents/notifications/', ParentNotificationListView.as_view(), name='parent-notifications'),

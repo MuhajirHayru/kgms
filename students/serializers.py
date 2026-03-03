@@ -81,14 +81,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
     )
     total_amount_due = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     passed_days = serializers.SerializerMethodField(read_only=True)
+    payment_status = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Invoice
         fields = [
             'id', 'student', 'student_id', 'month', 'amount', 'due_date',
-            'is_paid', 'penalty_amount', 'total_amount_due', 'passed_days'
+            'is_paid', 'penalty_amount', 'total_amount_due', 'passed_days', 'payment_status'
         ]
-        read_only_fields = ['is_paid', 'penalty_amount', 'total_amount_due', 'passed_days']
+        read_only_fields = ['is_paid', 'penalty_amount', 'total_amount_due', 'passed_days', 'payment_status']
 
     def get_passed_days(self, obj):
         if obj.is_paid:
@@ -97,6 +98,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
         if obj.due_date >= today:
             return 0
         return (today - obj.due_date).days
+
+    def get_payment_status(self, obj):
+        if obj.is_paid:
+            return "PAID"
+        today = timezone.localdate()
+        if obj.due_date < today:
+            return "OVERDUE"
+        return "PENDING"
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -141,4 +150,13 @@ class AccountantDashboardSerializer(serializers.Serializer):
     unpaid_students = serializers.IntegerField()
     overdue_students = serializers.IntegerField()
     paid_invoices = InvoiceSerializer(many=True)
+    unpaid_invoices = InvoiceSerializer(many=True)
+
+
+class AccountantMonthlyListSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    total_students = serializers.IntegerField()
+    paid_students = serializers.IntegerField()
+    unpaid_students = serializers.IntegerField()
+    overdue_students = serializers.IntegerField()
     unpaid_invoices = InvoiceSerializer(many=True)
