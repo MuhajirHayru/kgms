@@ -19,6 +19,20 @@ STUDENT_CATEGORY_CHOICES = (
     ('ELEMENTARY', 'Elementary'),
 )
 
+GRADE_LEVEL_CHOICES = (
+    ('KG1', 'KG 1'),
+    ('KG2', 'KG 2'),
+    ('KG3', 'KG 3'),
+    ('GRADE1', 'Grade 1'),
+    ('GRADE2', 'Grade 2'),
+    ('GRADE3', 'Grade 3'),
+    ('GRADE4', 'Grade 4'),
+    ('GRADE5', 'Grade 5'),
+    ('GRADE6', 'Grade 6'),
+    ('GRADE7', 'Grade 7'),
+    ('GRADE8', 'Grade 8'),
+)
+
 TRANSPORT_CHOICES = (
     ('BUS', 'Bus'),
     ('FOOT', 'Foot'),
@@ -30,6 +44,7 @@ class Student(models.Model):
     dob = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
     category = models.CharField(max_length=20, choices=STUDENT_CATEGORY_CHOICES, default='KG')
+    grade_level = models.CharField(max_length=20, choices=GRADE_LEVEL_CHOICES, default='KG1')
     transport = models.CharField(max_length=10, choices=TRANSPORT_CHOICES, default='FOOT')
     address = models.TextField(blank=True, null=True)
     emergency_contact = models.CharField(max_length=50, blank=True, null=True)

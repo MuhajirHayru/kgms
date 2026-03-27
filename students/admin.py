@@ -13,10 +13,11 @@ from .models import (
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
     list_display = (
-        'first_name', 'last_name', 'category', 'transport', 'dob',
+        'first_name', 'last_name', 'category', 'grade_level', 'transport', 'dob',
         'parent', 'monthly_tuition_fee', 'registration_fee', 'transport_fee', 'active'
     )
-    search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number')
+    list_filter = ('category', 'grade_level', 'transport', 'active')
+    search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number', 'grade_level')
 
 
 @admin.register(Parent)

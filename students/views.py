@@ -28,6 +28,7 @@ from .serializers import (
     PenaltySettingSerializer,
     StudentSerializer,
     StudentFeeSettingSerializer,
+    StudentGradeGroupSerializer,
 )
 from finance.services import record_account_transaction
 
@@ -95,10 +96,19 @@ class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # ---- Student Views ----
 class StudentListCreateView(generics.ListCreateAPIView):
-    queryset = Student.objects.all()
     serializer_class = StudentSerializer
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = Student.objects.select_related("parent", "class_teacher").all()
+        category = self.request.query_params.get("category")
+        grade_level = self.request.query_params.get("grade_level")
+        if category:
+            queryset = queryset.filter(category=category)
+        if grade_level:
+            queryset = queryset.filter(grade_level=grade_level)
+        return queryset.order_by("grade_level", "first_name", "last_name")
 
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -106,6 +116,43 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = StudentSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+
+class StudentGroupedByGradeView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        queryset = Student.objects.select_related("parent", "class_teacher").all()
+        category = request.query_params.get("category")
+        if category:
+            queryset = queryset.filter(category=category)
+
+        grade_order = [
+            "KG1", "KG2", "KG3",
+            "GRADE1", "GRADE2", "GRADE3", "GRADE4",
+            "GRADE5", "GRADE6", "GRADE7", "GRADE8",
+        ]
+        payload = []
+        for grade_level in grade_order:
+            students = list(
+                queryset.filter(grade_level=grade_level).order_by("first_name", "last_name")
+            )
+            if not students:
+                continue
+            payload.append(
+                {
+                    "grade_level": grade_level,
+                    "total_students": len(students),
+                    "students": students,
+                }
+            )
+
+        serializer = StudentGradeGroupSerializer(
+            payload,
+            many=True,
+            context={"request": request},
+        )
+        return Response(serializer.data)
 
 
 # ---- Invoice Views ----

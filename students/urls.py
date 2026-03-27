@@ -6,6 +6,7 @@ from .views import (
     ParentNotificationListView,
     StudentListCreateView,
     StudentDetailView,
+    StudentGroupedByGradeView,
     ParentListCreateView,
     ParentDetailView,
     InvoiceListCreateView,
@@ -18,6 +19,7 @@ from .views import (
 urlpatterns = [
     # Students
     path('students/', StudentListCreateView.as_view(), name='student-list-create'),
+    path('students/by-grade/', StudentGroupedByGradeView.as_view(), name='student-list-by-grade'),
     path('students/<int:pk>/', StudentDetailView.as_view(), name='student-detail'),
 
     # Parents

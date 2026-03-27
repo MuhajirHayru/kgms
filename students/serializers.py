@@ -38,7 +38,7 @@ class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = [
-            'id', 'first_name', 'last_name', 'dob', 'gender', 'category',
+            'id', 'first_name', 'last_name', 'dob', 'gender', 'category', 'grade_level',
             'transport', 'address', 'emergency_contact',
             'parent', 'parent_id', 'class_teacher', 'class_name', 'active',
             'student_photo', 'certificates', 'certificate_files', 'monthly_tuition_fee',
@@ -47,15 +47,34 @@ class StudentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'created_at', 'updated_at', 'certificate_files',
-            'monthly_tuition_fee', 'registration_fee', 'transport_fee',
+            'monthly_tuition_fee', 'registration_fee', 'transport_fee', 'class_name',
         ]
         extra_kwargs = {
             'student_photo': {'required': False, 'allow_null': True},
         }
 
     def validate(self, attrs):
-        transport = attrs.get("transport")
+        category = attrs.get("category", getattr(self.instance, "category", None))
+        grade_level = attrs.get("grade_level", getattr(self.instance, "grade_level", None))
+        transport = attrs.get("transport", getattr(self.instance, "transport", None))
         address = (attrs.get("address") or "").strip()
+
+        kg_grades = {"KG1", "KG2", "KG3"}
+        elementary_grades = {
+            "GRADE1", "GRADE2", "GRADE3", "GRADE4",
+            "GRADE5", "GRADE6", "GRADE7", "GRADE8",
+        }
+
+        if category == "KG" and grade_level not in kg_grades:
+            raise serializers.ValidationError(
+                {"grade_level": ["KG students must use KG1, KG2, or KG3."]}
+            )
+
+        if category == "ELEMENTARY" and grade_level not in elementary_grades:
+            raise serializers.ValidationError(
+                {"grade_level": ["Elementary students must use Grade 1 to Grade 8."]}
+            )
+
         if transport == "BUS" and not address:
             raise serializers.ValidationError(
                 {"address": ["Address is required when transport is BUS."]}
@@ -82,6 +101,7 @@ class StudentSerializer(serializers.ModelSerializer):
         fee_setting = StudentFeeSetting.get_current()
         category = validated_data["category"]
         transport = validated_data["transport"]
+        validated_data["class_name"] = validated_data["grade_level"]
         validated_data["monthly_tuition_fee"] = self._get_monthly_fee(category, fee_setting)
         validated_data["registration_fee"] = fee_setting.registration_fee
         validated_data["transport_fee"] = (
@@ -139,6 +159,18 @@ class StudentSerializer(serializers.ModelSerializer):
                 )
 
         return student
+
+    def update(self, instance, validated_data):
+        category = validated_data.get("category", instance.category)
+        transport = validated_data.get("transport", instance.transport)
+        validated_data["class_name"] = validated_data.get("grade_level", instance.grade_level)
+        fee_setting = StudentFeeSetting.get_current()
+        validated_data["monthly_tuition_fee"] = self._get_monthly_fee(category, fee_setting)
+        validated_data["registration_fee"] = fee_setting.registration_fee
+        validated_data["transport_fee"] = (
+            fee_setting.bus_transport_fee if transport == "BUS" else 0
+        )
+        return super().update(instance, validated_data)
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -207,6 +239,12 @@ class StudentFeeSettingSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'updated_at']
+
+
+class StudentGradeGroupSerializer(serializers.Serializer):
+    grade_level = serializers.CharField()
+    total_students = serializers.IntegerField()
+    students = StudentSerializer(many=True)
 
 
 class ParentNotificationSerializer(serializers.ModelSerializer):

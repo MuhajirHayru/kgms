@@ -266,6 +266,10 @@ class MonthlyReportSerializer(serializers.Serializer):
     total_income = serializers.DecimalField(max_digits=14, decimal_places=2)
     total_expense = serializers.DecimalField(max_digits=14, decimal_places=2)
     profit = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total_registration_fee = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total_transport_fee = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total_monthly_fee = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total_other_income = serializers.DecimalField(max_digits=14, decimal_places=2)
     entries = LedgerEntrySerializer(many=True)
 
 

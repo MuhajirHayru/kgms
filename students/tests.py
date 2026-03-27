@@ -36,11 +36,11 @@ class StudentRegistrationFlowTests(APITestCase):
                 "dob": "2019-01-10",
                 "gender": "M",
                 "category": "KG",
+                "grade_level": "KG1",
                 "transport": "BUS",
                 "address": "Main street",
                 "emergency_contact": "0999999999",
                 "parent_id": self.parent.id,
-                "class_name": "KG-1",
             },
             format="json",
         )
@@ -51,6 +51,8 @@ class StudentRegistrationFlowTests(APITestCase):
         self.assertEqual(student.monthly_tuition_fee, Decimal("100.00"))
         self.assertEqual(student.registration_fee, Decimal("300.00"))
         self.assertEqual(student.transport_fee, Decimal("50.00"))
+        self.assertEqual(student.grade_level, "KG1")
+        self.assertEqual(student.class_name, "KG1")
 
         invoice = Invoice.objects.get(student=student)
         self.assertTrue(invoice.is_paid)
@@ -65,6 +67,25 @@ class StudentRegistrationFlowTests(APITestCase):
             entry_types,
             ["REGISTRATION_FEE", "TRANSPORT_FEE", "MONTHLY_FEE"],
         )
+
+    def test_registration_rejects_invalid_grade_for_category(self):
+        response = self.client.post(
+            reverse("student-list-create"),
+            data={
+                "first_name": "Sara",
+                "last_name": "Kid",
+                "dob": "2018-01-10",
+                "gender": "F",
+                "category": "KG",
+                "grade_level": "GRADE2",
+                "transport": "FOOT",
+                "parent_id": self.parent.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("grade_level", response.data)
 
 
 class StudentFeeSettingViewTests(APITestCase):
@@ -96,3 +117,45 @@ class StudentFeeSettingViewTests(APITestCase):
         self.assertEqual(setting.elementary_monthly_fee, Decimal("225.00"))
         self.assertEqual(setting.registration_fee, Decimal("350.00"))
         self.assertEqual(setting.bus_transport_fee, Decimal("60.00"))
+
+
+class StudentGradeListingTests(APITestCase):
+    def setUp(self):
+        self.parent = User.objects.create_user(
+            phone_number="0911000003",
+            password="pass1234",
+            role="PARENT",
+            full_name="Parent Two",
+        )
+        Student.objects.create(
+            first_name="Aman",
+            last_name="One",
+            dob="2019-01-01",
+            gender="M",
+            category="KG",
+            grade_level="KG2",
+            class_name="KG2",
+            transport="FOOT",
+            parent=self.parent,
+        )
+        Student.objects.create(
+            first_name="Beth",
+            last_name="Two",
+            dob="2016-01-01",
+            gender="F",
+            category="ELEMENTARY",
+            grade_level="GRADE3",
+            class_name="GRADE3",
+            transport="FOOT",
+            parent=self.parent,
+        )
+
+    def test_students_can_be_grouped_by_grade(self):
+        response = self.client.get(reverse("student-list-by-grade"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data[0]["grade_level"], "KG2")
+        self.assertEqual(response.data[0]["total_students"], 1)
+        self.assertEqual(response.data[1]["grade_level"], "GRADE3")
+        self.assertEqual(response.data[1]["students"][0]["first_name"], "Beth")

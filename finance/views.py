@@ -213,6 +213,27 @@ class MonthlyReportView(APIView):
         total_expense_abs = entries.filter(amount_delta__lt=0).aggregate(total=Sum('amount_delta')).get('total') or Decimal('0')
         total_expense = abs(total_expense_abs)
         profit = total_income - total_expense
+        total_registration_fee = (
+            entries.filter(entry_type='REGISTRATION_FEE', amount_delta__gt=0)
+            .aggregate(total=Sum('amount_delta'))
+            .get('total')
+            or Decimal('0')
+        )
+        total_transport_fee = (
+            entries.filter(entry_type='TRANSPORT_FEE', amount_delta__gt=0)
+            .aggregate(total=Sum('amount_delta'))
+            .get('total')
+            or Decimal('0')
+        )
+        total_monthly_fee = (
+            entries.filter(entry_type='MONTHLY_FEE', amount_delta__gt=0)
+            .aggregate(total=Sum('amount_delta'))
+            .get('total')
+            or Decimal('0')
+        )
+        total_other_income = total_income - (
+            total_registration_fee + total_transport_fee + total_monthly_fee
+        )
 
         serializer = MonthlyReportSerializer(
             {
@@ -220,6 +241,10 @@ class MonthlyReportView(APIView):
                 'total_income': total_income,
                 'total_expense': total_expense,
                 'profit': profit,
+                'total_registration_fee': total_registration_fee,
+                'total_transport_fee': total_transport_fee,
+                'total_monthly_fee': total_monthly_fee,
+                'total_other_income': total_other_income,
                 'entries': entries,
             }
         )
