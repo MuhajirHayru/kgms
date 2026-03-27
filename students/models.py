@@ -14,9 +14,14 @@ GENDER_CHOICES = (
     ('O', 'Other'),
 )
 
+STUDENT_CATEGORY_CHOICES = (
+    ('KG', 'KG'),
+    ('ELEMENTARY', 'Elementary'),
+)
+
 TRANSPORT_CHOICES = (
     ('BUS', 'Bus'),
-    ('foot', 'foot'),
+    ('FOOT', 'Foot'),
 )
 
 class Student(models.Model):
@@ -24,7 +29,8 @@ class Student(models.Model):
     last_name = models.CharField(max_length=50)
     dob = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
-    transport = models.CharField(max_length=10, choices=TRANSPORT_CHOICES, default='OTHER')
+    category = models.CharField(max_length=20, choices=STUDENT_CATEGORY_CHOICES, default='KG')
+    transport = models.CharField(max_length=10, choices=TRANSPORT_CHOICES, default='FOOT')
     address = models.TextField(blank=True, null=True)
     emergency_contact = models.CharField(max_length=50, blank=True, null=True)
 
@@ -48,6 +54,8 @@ class Student(models.Model):
 
     class_name = models.CharField(max_length=50)
     monthly_tuition_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    transport_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     active = models.BooleanField(default=True)
     student_photo = models.FileField(upload_to="students/photos/", blank=True, null=True)
 
@@ -123,6 +131,30 @@ class PenaltySetting(models.Model):
     @classmethod
     def get_current(cls):
         obj, _ = cls.objects.get_or_create(id=1, defaults={"penalty_per_day": 0})
+        return obj
+
+
+class StudentFeeSetting(models.Model):
+    kg_monthly_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    elementary_monthly_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    bus_transport_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return "Student Fee Settings"
+
+    @classmethod
+    def get_current(cls):
+        obj, _ = cls.objects.get_or_create(
+            id=1,
+            defaults={
+                "kg_monthly_fee": 0,
+                "elementary_monthly_fee": 0,
+                "registration_fee": 0,
+                "bus_transport_fee": 0,
+            },
+        )
         return obj
 
 

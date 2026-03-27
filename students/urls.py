@@ -12,6 +12,7 @@ from .views import (
     PaymentListCreateView,
     PenaltySettingView,
     ReminderRunView,
+    StudentFeeSettingView,
 )
 
 urlpatterns = [
@@ -30,6 +31,7 @@ urlpatterns = [
     path('fees/dashboard/', AccountantMonthlyDashboardView.as_view(), name='fees-dashboard'),
     path('fees/monthly/', AccountantMonthlyFeesView.as_view(), name='fees-monthly'),
     path('fees/penalty-setting/', PenaltySettingView.as_view(), name='fees-penalty-setting'),
+    path('fees/settings/', StudentFeeSettingView.as_view(), name='student-fee-setting'),
     path('fees/run-reminders/', ReminderRunView.as_view(), name='fees-run-reminders'),
     path('parents/notifications/', ParentNotificationListView.as_view(), name='parent-notifications'),
 ]

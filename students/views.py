@@ -9,7 +9,15 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Invoice, Parent, ParentNotification, Payment, PenaltySetting, Student
+from .models import (
+    Invoice,
+    Parent,
+    ParentNotification,
+    Payment,
+    PenaltySetting,
+    Student,
+    StudentFeeSetting,
+)
 from .serializers import (
     AccountantDashboardSerializer,
     AccountantMonthlyListSerializer,
@@ -19,6 +27,7 @@ from .serializers import (
     PaymentSerializer,
     PenaltySettingSerializer,
     StudentSerializer,
+    StudentFeeSettingSerializer,
 )
 from finance.services import record_account_transaction
 
@@ -124,7 +133,7 @@ class PaymentListCreateView(generics.ListCreateAPIView):
         _apply_penalty(invoice)
         record_account_transaction(
             amount_delta=payment.amount,
-            entry_type="STUDENT_FEE",
+            entry_type="MONTHLY_FEE",
             description=(
                 f"Student fee received from {invoice.student.parent.full_name or invoice.student.parent.phone_number} "
                 f"for {invoice.student} ({invoice.month})."
@@ -160,6 +169,21 @@ class PenaltySettingView(APIView):
     def put(self, request):
         setting = PenaltySetting.get_current()
         serializer = PenaltySettingSerializer(setting, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class StudentFeeSettingView(APIView):
+    permission_classes = [IsAuthenticated, IsDirectorOrSuperuser]
+
+    def get(self, request):
+        setting = StudentFeeSetting.get_current()
+        return Response(StudentFeeSettingSerializer(setting).data)
+
+    def put(self, request):
+        setting = StudentFeeSetting.get_current()
+        serializer = StudentFeeSettingSerializer(setting, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

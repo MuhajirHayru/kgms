@@ -1,5 +1,6 @@
 # students/serializers.py
 from rest_framework import serializers
+from django.db import transaction
 from django.utils import timezone
 from .models import (
     Invoice,
@@ -9,6 +10,7 @@ from .models import (
     PenaltySetting,
     Student,
     StudentCertificate,
+    StudentFeeSetting,
 )
 
 
@@ -36,13 +38,17 @@ class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = [
-            'id', 'first_name', 'last_name', 'dob', 'gender',
+            'id', 'first_name', 'last_name', 'dob', 'gender', 'category',
             'transport', 'address', 'emergency_contact',
             'parent', 'parent_id', 'class_teacher', 'class_name', 'active',
             'student_photo', 'certificates', 'certificate_files', 'monthly_tuition_fee',
+            'registration_fee', 'transport_fee',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'certificate_files']
+        read_only_fields = [
+            'created_at', 'updated_at', 'certificate_files',
+            'monthly_tuition_fee', 'registration_fee', 'transport_fee',
+        ]
         extra_kwargs = {
             'student_photo': {'required': False, 'allow_null': True},
         }
@@ -56,6 +62,11 @@ class StudentSerializer(serializers.ModelSerializer):
             )
         return attrs
 
+    def _get_monthly_fee(self, category, fee_setting):
+        if category == "KG":
+            return fee_setting.kg_monthly_fee
+        return fee_setting.elementary_monthly_fee
+
     def get_certificate_files(self, obj):
         request = self.context.get("request")
         files = []
@@ -68,9 +79,65 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         certificate_files = validated_data.pop("certificates", [])
-        student = super().create(validated_data)
-        for file_obj in certificate_files:
-            StudentCertificate.objects.create(student=student, file=file_obj)
+        fee_setting = StudentFeeSetting.get_current()
+        category = validated_data["category"]
+        transport = validated_data["transport"]
+        validated_data["monthly_tuition_fee"] = self._get_monthly_fee(category, fee_setting)
+        validated_data["registration_fee"] = fee_setting.registration_fee
+        validated_data["transport_fee"] = (
+            fee_setting.bus_transport_fee if transport == "BUS" else 0
+        )
+
+        request = self.context.get("request")
+        created_by = None
+        if request is not None and getattr(request.user, "is_authenticated", False):
+            created_by = request.user
+
+        with transaction.atomic():
+            student = super().create(validated_data)
+            for file_obj in certificate_files:
+                StudentCertificate.objects.create(student=student, file=file_obj)
+
+            from finance.services import record_account_transaction
+
+            student_name = f"{student.first_name} {student.last_name}".strip()
+            if student.registration_fee > 0:
+                record_account_transaction(
+                    amount_delta=student.registration_fee,
+                    entry_type="REGISTRATION_FEE",
+                    description=f"Registration fee received for {student_name} ({student.category}).",
+                    created_by=created_by,
+                )
+
+            if student.transport_fee > 0:
+                record_account_transaction(
+                    amount_delta=student.transport_fee,
+                    entry_type="TRANSPORT_FEE",
+                    description=f"Transport fee received for {student_name} (BUS).",
+                    created_by=created_by,
+                )
+
+            if student.monthly_tuition_fee > 0:
+                month = timezone.localdate().strftime("%Y-%m")
+                invoice = Invoice.objects.create(
+                    student=student,
+                    month=month,
+                    amount=student.monthly_tuition_fee,
+                    due_date=timezone.localdate(),
+                    is_paid=True,
+                )
+                Payment.objects.create(
+                    invoice=invoice,
+                    amount=student.monthly_tuition_fee,
+                    paid_by=created_by,
+                )
+                record_account_transaction(
+                    amount_delta=student.monthly_tuition_fee,
+                    entry_type="MONTHLY_FEE",
+                    description=f"Monthly fee received for {student_name} ({month}).",
+                    created_by=created_by,
+                )
+
         return student
 
 
@@ -126,6 +193,20 @@ class PenaltySettingSerializer(serializers.ModelSerializer):
         model = PenaltySetting
         fields = ['id', 'penalty_per_day', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class StudentFeeSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentFeeSetting
+        fields = [
+            'id',
+            'kg_monthly_fee',
+            'elementary_monthly_fee',
+            'registration_fee',
+            'bus_transport_fee',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_at']
 
 
 class ParentNotificationSerializer(serializers.ModelSerializer):

@@ -7,11 +7,15 @@ from .models import (
     PenaltySetting,
     Student,
     StudentCertificate,
+    StudentFeeSetting,
 )
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('first_name', 'last_name', 'dob', 'parent', 'monthly_tuition_fee', 'active', 'student_photo')
+    list_display = (
+        'first_name', 'last_name', 'category', 'transport', 'dob',
+        'parent', 'monthly_tuition_fee', 'registration_fee', 'transport_fee', 'active'
+    )
     search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number')
 
 
@@ -42,6 +46,18 @@ class StudentCertificateAdmin(admin.ModelAdmin):
 @admin.register(PenaltySetting)
 class PenaltySettingAdmin(admin.ModelAdmin):
     list_display = ('id', 'penalty_per_day', 'updated_at')
+
+
+@admin.register(StudentFeeSetting)
+class StudentFeeSettingAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'kg_monthly_fee',
+        'elementary_monthly_fee',
+        'registration_fee',
+        'bus_transport_fee',
+        'updated_at',
+    )
 
 
 @admin.register(ParentNotification)

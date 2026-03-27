@@ -156,6 +156,9 @@ class SchoolAccount(models.Model):
 class LedgerEntry(models.Model):
     ENTRY_TYPE_CHOICES = (
         ("STUDENT_FEE", "Student Fee"),
+        ("REGISTRATION_FEE", "Registration Fee"),
+        ("TRANSPORT_FEE", "Transport Fee"),
+        ("MONTHLY_FEE", "Monthly Fee"),
         ("MANUAL_INCOME", "Manual Income"),
         ("SALARY_PAYMENT", "Salary Payment"),
         ("EXPENSE_PAYMENT", "Expense Payment"),
