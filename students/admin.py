@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    GradeCapacitySetting,
     Invoice,
     Parent,
     ParentNotification,
@@ -13,11 +14,11 @@ from .models import (
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
     list_display = (
-        'first_name', 'last_name', 'category', 'grade_level', 'transport', 'dob',
+        'first_name', 'last_name', 'category', 'grade_level', 'class_name', 'transport', 'dob',
         'parent', 'monthly_tuition_fee', 'registration_fee', 'transport_fee', 'active'
     )
-    list_filter = ('category', 'grade_level', 'transport', 'active')
-    search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number', 'grade_level')
+    list_filter = ('category', 'grade_level', 'class_name', 'transport', 'active')
+    search_fields = ('first_name', 'last_name', 'parent__full_name', 'parent__phone_number', 'grade_level', 'class_name')
 
 
 @admin.register(Parent)
@@ -59,6 +60,12 @@ class StudentFeeSettingAdmin(admin.ModelAdmin):
         'bus_transport_fee',
         'updated_at',
     )
+
+
+@admin.register(GradeCapacitySetting)
+class GradeCapacitySettingAdmin(admin.ModelAdmin):
+    list_display = ('grade_level', 'max_students_per_section', 'updated_at')
+    search_fields = ('grade_level',)
 
 
 @admin.register(ParentNotification)

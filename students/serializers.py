@@ -1,8 +1,11 @@
 # students/serializers.py
 from rest_framework import serializers
+import random
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 from .models import (
+    GradeCapacitySetting,
     Invoice,
     Parent,
     ParentNotification,
@@ -18,6 +21,50 @@ class ParentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Parent
         fields = ['id', 'phone_number', 'full_name']
+
+
+def _student_report_label(student):
+    student_name = f"{student.first_name} {student.last_name}".strip()
+    return f"{student_name} - {student.grade_level} - {student.class_name}"
+
+
+def _section_label(index):
+    label = ""
+    while True:
+        index, remainder = divmod(index, 26)
+        label = chr(65 + remainder) + label
+        if index == 0:
+            return label
+        index -= 1
+
+
+def _assign_class_name(*, grade_level, exclude_student_id=None):
+    capacity_setting, _ = GradeCapacitySetting.objects.get_or_create(
+        grade_level=grade_level,
+        defaults={"max_students_per_section": 30},
+    )
+    max_students = max(1, capacity_setting.max_students_per_section)
+    queryset = Student.objects.filter(grade_level=grade_level)
+    if exclude_student_id:
+        queryset = queryset.exclude(id=exclude_student_id)
+
+    section_counts = {
+        row["class_name"]: row["total_students"]
+        for row in queryset.values("class_name").annotate(total_students=Count("id"))
+        if row["class_name"]
+    }
+
+    existing_sections = sorted(section_counts.keys())
+    available_existing_sections = [
+        class_name
+        for class_name in existing_sections
+        if section_counts.get(class_name, 0) < max_students
+    ]
+    if available_existing_sections:
+        return random.choice(available_existing_sections)
+
+    next_section_index = len(existing_sections)
+    return f"{grade_level}{_section_label(next_section_index)}"
 
 
 class StudentSerializer(serializers.ModelSerializer):
@@ -101,7 +148,7 @@ class StudentSerializer(serializers.ModelSerializer):
         fee_setting = StudentFeeSetting.get_current()
         category = validated_data["category"]
         transport = validated_data["transport"]
-        validated_data["class_name"] = validated_data["grade_level"]
+        validated_data["class_name"] = _assign_class_name(grade_level=validated_data["grade_level"])
         validated_data["monthly_tuition_fee"] = self._get_monthly_fee(category, fee_setting)
         validated_data["registration_fee"] = fee_setting.registration_fee
         validated_data["transport_fee"] = (
@@ -120,12 +167,12 @@ class StudentSerializer(serializers.ModelSerializer):
 
             from finance.services import record_account_transaction
 
-            student_name = f"{student.first_name} {student.last_name}".strip()
+            student_label = _student_report_label(student)
             if student.registration_fee > 0:
                 record_account_transaction(
                     amount_delta=student.registration_fee,
                     entry_type="REGISTRATION_FEE",
-                    description=f"Registration fee received for {student_name} ({student.category}).",
+                    description=f"Registration fee received for {student_label} ({student.category}).",
                     created_by=created_by,
                 )
 
@@ -133,7 +180,7 @@ class StudentSerializer(serializers.ModelSerializer):
                 record_account_transaction(
                     amount_delta=student.transport_fee,
                     entry_type="TRANSPORT_FEE",
-                    description=f"Transport fee received for {student_name} (BUS).",
+                    description=f"Transport fee received for {student_label} (BUS).",
                     created_by=created_by,
                 )
 
@@ -154,7 +201,7 @@ class StudentSerializer(serializers.ModelSerializer):
                 record_account_transaction(
                     amount_delta=student.monthly_tuition_fee,
                     entry_type="MONTHLY_FEE",
-                    description=f"Monthly fee received for {student_name} ({month}).",
+                    description=f"Monthly fee received for {student_label} ({month}).",
                     created_by=created_by,
                 )
 
@@ -163,7 +210,14 @@ class StudentSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         category = validated_data.get("category", instance.category)
         transport = validated_data.get("transport", instance.transport)
-        validated_data["class_name"] = validated_data.get("grade_level", instance.grade_level)
+        grade_level = validated_data.get("grade_level", instance.grade_level)
+        if grade_level != instance.grade_level:
+            validated_data["class_name"] = _assign_class_name(
+                grade_level=grade_level,
+                exclude_student_id=instance.id,
+            )
+        else:
+            validated_data["class_name"] = instance.class_name
         fee_setting = StudentFeeSetting.get_current()
         validated_data["monthly_tuition_fee"] = self._get_monthly_fee(category, fee_setting)
         validated_data["registration_fee"] = fee_setting.registration_fee
@@ -241,10 +295,24 @@ class StudentFeeSettingSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'updated_at']
 
 
+class GradeCapacitySettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GradeCapacitySetting
+        fields = ['id', 'grade_level', 'max_students_per_section', 'updated_at']
+        read_only_fields = ['id', 'updated_at']
+
+
+class GradeSectionSerializer(serializers.Serializer):
+    class_name = serializers.CharField()
+    total_students = serializers.IntegerField()
+    students = StudentSerializer(many=True)
+
+
 class StudentGradeGroupSerializer(serializers.Serializer):
     grade_level = serializers.CharField()
     total_students = serializers.IntegerField()
     students = StudentSerializer(many=True)
+    sections = GradeSectionSerializer(many=True)
 
 
 class ParentNotificationSerializer(serializers.ModelSerializer):

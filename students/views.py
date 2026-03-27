@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
+    GradeCapacitySetting,
     Invoice,
     Parent,
     ParentNotification,
@@ -26,9 +27,11 @@ from .serializers import (
     ParentSerializer,
     PaymentSerializer,
     PenaltySettingSerializer,
+    GradeCapacitySettingSerializer,
     StudentSerializer,
     StudentFeeSettingSerializer,
     StudentGradeGroupSerializer,
+    _student_report_label,
 )
 from finance.services import record_account_transaction
 
@@ -104,11 +107,14 @@ class StudentListCreateView(generics.ListCreateAPIView):
         queryset = Student.objects.select_related("parent", "class_teacher").all()
         category = self.request.query_params.get("category")
         grade_level = self.request.query_params.get("grade_level")
+        class_name = self.request.query_params.get("class_name")
         if category:
             queryset = queryset.filter(category=category)
         if grade_level:
             queryset = queryset.filter(grade_level=grade_level)
-        return queryset.order_by("grade_level", "first_name", "last_name")
+        if class_name:
+            queryset = queryset.filter(class_name=class_name)
+        return queryset.order_by("grade_level", "class_name", "first_name", "last_name")
 
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -135,15 +141,27 @@ class StudentGroupedByGradeView(APIView):
         payload = []
         for grade_level in grade_order:
             students = list(
-                queryset.filter(grade_level=grade_level).order_by("first_name", "last_name")
+                queryset.filter(grade_level=grade_level).order_by("class_name", "first_name", "last_name")
             )
             if not students:
                 continue
+            sections_map = {}
+            for student in students:
+                sections_map.setdefault(student.class_name, []).append(student)
+            sections = [
+                {
+                    "class_name": class_name,
+                    "total_students": len(section_students),
+                    "students": section_students,
+                }
+                for class_name, section_students in sections_map.items()
+            ]
             payload.append(
                 {
                     "grade_level": grade_level,
                     "total_students": len(students),
                     "students": students,
+                    "sections": sections,
                 }
             )
 
@@ -153,6 +171,26 @@ class StudentGroupedByGradeView(APIView):
             context={"request": request},
         )
         return Response(serializer.data)
+
+
+class GradeCapacitySettingListView(generics.ListCreateAPIView):
+    serializer_class = GradeCapacitySettingSerializer
+    permission_classes = [IsAuthenticated, IsDirectorOrSuperuser]
+
+    def get_queryset(self):
+        grade_levels = [choice[0] for choice in Student._meta.get_field("grade_level").choices]
+        for grade_level in grade_levels:
+            GradeCapacitySetting.objects.get_or_create(
+                grade_level=grade_level,
+                defaults={"max_students_per_section": 30},
+            )
+        return GradeCapacitySetting.objects.all()
+
+
+class GradeCapacitySettingDetailView(generics.RetrieveUpdateAPIView):
+    queryset = GradeCapacitySetting.objects.all()
+    serializer_class = GradeCapacitySettingSerializer
+    permission_classes = [IsAuthenticated, IsDirectorOrSuperuser]
 
 
 # ---- Invoice Views ----
@@ -183,7 +221,7 @@ class PaymentListCreateView(generics.ListCreateAPIView):
             entry_type="MONTHLY_FEE",
             description=(
                 f"Student fee received from {invoice.student.parent.full_name or invoice.student.parent.phone_number} "
-                f"for {invoice.student} ({invoice.month})."
+                f"for {_student_report_label(invoice.student)} ({invoice.month})."
             ),
             created_by=self.request.user,
         )

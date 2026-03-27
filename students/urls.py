@@ -3,6 +3,8 @@ from .views import (
     AccountantMonthlyDashboardView,
     AccountantMonthlyFeesView,
     GenerateCurrentMonthInvoicesView,
+    GradeCapacitySettingDetailView,
+    GradeCapacitySettingListView,
     ParentNotificationListView,
     StudentListCreateView,
     StudentDetailView,
@@ -21,6 +23,8 @@ urlpatterns = [
     path('students/', StudentListCreateView.as_view(), name='student-list-create'),
     path('students/by-grade/', StudentGroupedByGradeView.as_view(), name='student-list-by-grade'),
     path('students/<int:pk>/', StudentDetailView.as_view(), name='student-detail'),
+    path('grades/capacity/', GradeCapacitySettingListView.as_view(), name='grade-capacity-list'),
+    path('grades/capacity/<int:pk>/', GradeCapacitySettingDetailView.as_view(), name='grade-capacity-detail'),
 
     # Parents
     path('parents/', ParentListCreateView.as_view(), name='parent-list-create'),

@@ -38,6 +38,19 @@ TRANSPORT_CHOICES = (
     ('FOOT', 'Foot'),
 )
 
+
+class GradeCapacitySetting(models.Model):
+    grade_level = models.CharField(max_length=20, choices=GRADE_LEVEL_CHOICES, unique=True)
+    max_students_per_section = models.PositiveIntegerField(default=30)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["grade_level"]
+
+    def __str__(self):
+        return f"{self.grade_level} capacity: {self.max_students_per_section}"
+
+
 class Student(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)

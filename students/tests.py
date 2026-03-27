@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.urls import reverse
 from rest_framework import status
@@ -6,7 +7,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import User
 from finance.models import LedgerEntry, SchoolAccount
-from students.models import Invoice, Payment, Student, StudentFeeSetting
+from students.models import GradeCapacitySetting, Invoice, Payment, Student, StudentFeeSetting
 
 
 class StudentRegistrationFlowTests(APITestCase):
@@ -26,24 +27,29 @@ class StudentRegistrationFlowTests(APITestCase):
                 "bus_transport_fee": Decimal("50.00"),
             },
         )
+        GradeCapacitySetting.objects.update_or_create(
+            grade_level="KG1",
+            defaults={"max_students_per_section": 2},
+        )
 
     def test_student_registration_adds_fees_to_balance_and_report(self):
-        response = self.client.post(
-            reverse("student-list-create"),
-            data={
-                "first_name": "Sam",
-                "last_name": "Kid",
-                "dob": "2019-01-10",
-                "gender": "M",
-                "category": "KG",
-                "grade_level": "KG1",
-                "transport": "BUS",
-                "address": "Main street",
-                "emergency_contact": "0999999999",
-                "parent_id": self.parent.id,
-            },
-            format="json",
-        )
+        with patch("students.serializers.random.choice", side_effect=lambda options: options[0]):
+            response = self.client.post(
+                reverse("student-list-create"),
+                data={
+                    "first_name": "Sam",
+                    "last_name": "Kid",
+                    "dob": "2019-01-10",
+                    "gender": "M",
+                    "category": "KG",
+                    "grade_level": "KG1",
+                    "transport": "BUS",
+                    "address": "Main street",
+                    "emergency_contact": "0999999999",
+                    "parent_id": self.parent.id,
+                },
+                format="json",
+            )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -52,7 +58,7 @@ class StudentRegistrationFlowTests(APITestCase):
         self.assertEqual(student.registration_fee, Decimal("300.00"))
         self.assertEqual(student.transport_fee, Decimal("50.00"))
         self.assertEqual(student.grade_level, "KG1")
-        self.assertEqual(student.class_name, "KG1")
+        self.assertEqual(student.class_name, "KG1A")
 
         invoice = Invoice.objects.get(student=student)
         self.assertTrue(invoice.is_paid)
@@ -67,22 +73,25 @@ class StudentRegistrationFlowTests(APITestCase):
             entry_types,
             ["REGISTRATION_FEE", "TRANSPORT_FEE", "MONTHLY_FEE"],
         )
+        descriptions = list(LedgerEntry.objects.values_list("description", flat=True))
+        self.assertTrue(any("KG1 - KG1A" in description for description in descriptions))
 
     def test_registration_rejects_invalid_grade_for_category(self):
-        response = self.client.post(
-            reverse("student-list-create"),
-            data={
-                "first_name": "Sara",
-                "last_name": "Kid",
-                "dob": "2018-01-10",
-                "gender": "F",
-                "category": "KG",
-                "grade_level": "GRADE2",
-                "transport": "FOOT",
-                "parent_id": self.parent.id,
-            },
-            format="json",
-        )
+        with patch("students.serializers.random.choice", side_effect=lambda options: options[0]):
+            response = self.client.post(
+                reverse("student-list-create"),
+                data={
+                    "first_name": "Sara",
+                    "last_name": "Kid",
+                    "dob": "2018-01-10",
+                    "gender": "F",
+                    "category": "KG",
+                    "grade_level": "GRADE2",
+                    "transport": "FOOT",
+                    "parent_id": self.parent.id,
+                },
+                format="json",
+            )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("grade_level", response.data)
@@ -127,6 +136,14 @@ class StudentGradeListingTests(APITestCase):
             role="PARENT",
             full_name="Parent Two",
         )
+        GradeCapacitySetting.objects.update_or_create(
+            grade_level="KG2",
+            defaults={"max_students_per_section": 2},
+        )
+        GradeCapacitySetting.objects.update_or_create(
+            grade_level="GRADE3",
+            defaults={"max_students_per_section": 2},
+        )
         Student.objects.create(
             first_name="Aman",
             last_name="One",
@@ -134,7 +151,7 @@ class StudentGradeListingTests(APITestCase):
             gender="M",
             category="KG",
             grade_level="KG2",
-            class_name="KG2",
+            class_name="KG2A",
             transport="FOOT",
             parent=self.parent,
         )
@@ -145,7 +162,7 @@ class StudentGradeListingTests(APITestCase):
             gender="F",
             category="ELEMENTARY",
             grade_level="GRADE3",
-            class_name="GRADE3",
+            class_name="GRADE3A",
             transport="FOOT",
             parent=self.parent,
         )
@@ -157,5 +174,164 @@ class StudentGradeListingTests(APITestCase):
         self.assertEqual(len(response.data), 2)
         self.assertEqual(response.data[0]["grade_level"], "KG2")
         self.assertEqual(response.data[0]["total_students"], 1)
+        self.assertEqual(response.data[0]["sections"][0]["class_name"], "KG2A")
         self.assertEqual(response.data[1]["grade_level"], "GRADE3")
         self.assertEqual(response.data[1]["students"][0]["first_name"], "Beth")
+
+
+class StudentSectionAssignmentTests(APITestCase):
+    def setUp(self):
+        self.parent = User.objects.create_user(
+            phone_number="0911000004",
+            password="pass1234",
+            role="PARENT",
+            full_name="Parent Three",
+        )
+        StudentFeeSetting.objects.update_or_create(
+            id=1,
+            defaults={
+                "kg_monthly_fee": Decimal("100.00"),
+                "elementary_monthly_fee": Decimal("200.00"),
+                "registration_fee": Decimal("300.00"),
+                "bus_transport_fee": Decimal("50.00"),
+            },
+        )
+        GradeCapacitySetting.objects.update_or_create(
+            grade_level="GRADE1",
+            defaults={"max_students_per_section": 2},
+        )
+
+    def test_students_are_split_into_sections_when_capacity_is_reached(self):
+        payload = {
+            "dob": "2016-01-10",
+            "gender": "M",
+            "category": "ELEMENTARY",
+            "grade_level": "GRADE1",
+            "transport": "FOOT",
+            "parent_id": self.parent.id,
+        }
+
+        with patch("students.serializers.random.choice", side_effect=lambda options: options[-1]):
+            for first_name in ["Ali", "Ben", "Cal"]:
+                response = self.client.post(
+                    reverse("student-list-create"),
+                    data={**payload, "first_name": first_name, "last_name": "Kid"},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        classes = list(
+            Student.objects.filter(grade_level="GRADE1")
+            .order_by("first_name")
+            .values_list("class_name", flat=True)
+        )
+        self.assertEqual(classes, ["GRADE1A", "GRADE1A", "GRADE1B"])
+
+    def test_students_can_be_randomly_placed_into_any_available_section(self):
+        Student.objects.create(
+            first_name="Existing",
+            last_name="A",
+            dob="2016-01-01",
+            gender="M",
+            category="ELEMENTARY",
+            grade_level="GRADE1",
+            class_name="GRADE1A",
+            transport="FOOT",
+            parent=self.parent,
+        )
+        Student.objects.create(
+            first_name="Existing",
+            last_name="B",
+            dob="2016-01-01",
+            gender="M",
+            category="ELEMENTARY",
+            grade_level="GRADE1",
+            class_name="GRADE1B",
+            transport="FOOT",
+            parent=self.parent,
+        )
+
+        payload = {
+            "first_name": "Dana",
+            "last_name": "Kid",
+            "dob": "2016-01-10",
+            "gender": "F",
+            "category": "ELEMENTARY",
+            "grade_level": "GRADE1",
+            "transport": "FOOT",
+            "parent_id": self.parent.id,
+        }
+
+        with patch("students.serializers.random.choice", side_effect=lambda options: options[-1]):
+            response = self.client.post(reverse("student-list-create"), data=payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Student.objects.get(first_name="Dana").class_name, "GRADE1B")
+
+
+class GradeCapacitySettingViewTests(APITestCase):
+    def setUp(self):
+        self.director = User.objects.create_user(
+            phone_number="0911000005",
+            password="pass1234",
+            role="DIRECTOR",
+            full_name="Director Two",
+        )
+        self.client.force_authenticate(self.director)
+
+    def test_capacity_list_returns_grade_settings(self):
+        response = self.client.get(reverse("grade-capacity-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(item["grade_level"] == "KG1" for item in response.data))
+
+
+class MonthlyPaymentReportDescriptionTests(APITestCase):
+    def setUp(self):
+        self.accountant = User.objects.create_user(
+            phone_number="0911000006",
+            password="pass1234",
+            role="ACCOUNTANT",
+            full_name="Accountant Three",
+        )
+        self.parent = User.objects.create_user(
+            phone_number="0911000007",
+            password="pass1234",
+            role="PARENT",
+            full_name="Parent Four",
+        )
+        self.student = Student.objects.create(
+            first_name="Mahi",
+            last_name="Kid",
+            dob="2016-01-01",
+            gender="F",
+            category="ELEMENTARY",
+            grade_level="GRADE2",
+            class_name="GRADE2B",
+            transport="FOOT",
+            parent=self.parent,
+            monthly_tuition_fee=Decimal("200.00"),
+        )
+        self.invoice = Invoice.objects.create(
+            student=self.student,
+            month="2026-03",
+            amount=Decimal("200.00"),
+            due_date="2026-03-05",
+            is_paid=False,
+        )
+        self.client.force_authenticate(self.accountant)
+
+    def test_manual_monthly_payment_report_includes_grade_and_section(self):
+        response = self.client.post(
+            reverse("payment-create"),
+            data={
+                "invoice_id": self.invoice.id,
+                "amount": "200.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        entry = LedgerEntry.objects.filter(entry_type="MONTHLY_FEE").latest("created_at")
+        self.assertIn("GRADE2 - GRADE2B", entry.description)
+        self.assertIn("2026-03", entry.description)
