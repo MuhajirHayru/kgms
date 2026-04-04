@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     AnnouncementCreateView,
+    BankAccountDetailView,
+    BankAccountListCreateView,
     BonusCreateView,
     CreditGiveView,
     CreditRepaymentCreateView,
@@ -39,6 +41,8 @@ from .views import (
 urlpatterns = [
     path('account/', SchoolAccountView.as_view(), name='school-account'),
     path('account/initialize/', SchoolAccountInitializeView.as_view(), name='school-account-initialize'),
+    path('bank-accounts/', BankAccountListCreateView.as_view(), name='bank-account-list-create'),
+    path('bank-accounts/<int:pk>/', BankAccountDetailView.as_view(), name='bank-account-detail'),
     path('ledger/', LedgerEntryListView.as_view(), name='ledger-list'),
     path('income/manual/', ManualIncomeCreateView.as_view(), name='manual-income-create'),
     path('reports/monthly/', MonthlyReportView.as_view(), name='monthly-report'),

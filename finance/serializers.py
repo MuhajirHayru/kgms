@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     Announcement,
+    BankAccount,
     Bonus,
     CreditRepayment,
     CreditRequest,
@@ -25,10 +26,26 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
+    bank_account_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
     class Meta:
         model = Payment
-        fields = '__all__'
+        fields = ['id', 'invoice', 'paid_amount', 'paid_at', 'paid_by', 'bank_account_id']
         read_only_fields = ['paid_by', 'paid_at']
+
+    def validate_bank_account_id(self, value):
+        if not BankAccount.objects.filter(id=value, is_active=True).exists():
+            raise serializers.ValidationError('Select a valid active bank account.')
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('bank_account_id') is None and BankAccount.get_default() is None:
+            raise serializers.ValidationError({'bank_account_id': 'No default bank account is configured.'})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('bank_account_id', None)
+        return super().create(validated_data)
 
 
 class PayrollSerializer(serializers.ModelSerializer):
@@ -157,17 +174,57 @@ class SchoolAccountSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'updated_at']
 
 
+class BankAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BankAccount
+        fields = [
+            'id',
+            'account_name',
+            'bank_name',
+            'account_holder_name',
+            'account_number',
+            'branch_name',
+            'swift_code',
+            'initial_balance',
+            'current_balance',
+            'is_active',
+            'is_default',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'current_balance', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        initial_balance = attrs.get('initial_balance')
+        if self.instance is None and initial_balance is None:
+            raise serializers.ValidationError({'initial_balance': 'This field is required.'})
+        if self.instance is not None and 'initial_balance' in attrs and attrs['initial_balance'] != self.instance.initial_balance:
+            raise serializers.ValidationError({'initial_balance': 'Initial balance can only be set when creating the bank account.'})
+        return attrs
+
+    def create(self, validated_data):
+        initial_balance = validated_data.get('initial_balance', 0)
+        validated_data['current_balance'] = initial_balance
+        return super().create(validated_data)
+
+
 class InitializeSchoolAccountSerializer(serializers.Serializer):
     initial_balance = serializers.DecimalField(max_digits=14, decimal_places=2)
 
 
 class LedgerEntrySerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    bank_account_id = serializers.IntegerField(source='bank_account.id', read_only=True)
+    bank_name = serializers.CharField(source='bank_account.bank_name', read_only=True)
+    bank_account_name = serializers.CharField(source='bank_account.account_name', read_only=True)
 
     class Meta:
         model = LedgerEntry
         fields = [
             'id',
+            'bank_account_id',
+            'bank_name',
+            'bank_account_name',
             'entry_type',
             'amount_delta',
             'description',
@@ -179,8 +236,19 @@ class LedgerEntrySerializer(serializers.ModelSerializer):
 
 
 class ManualIncomeSerializer(serializers.Serializer):
+    bank_account_id = serializers.IntegerField(required=False, allow_null=True)
     amount = serializers.DecimalField(max_digits=14, decimal_places=2)
     description = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_bank_account_id(self, value):
+        if not BankAccount.objects.filter(id=value, is_active=True).exists():
+            raise serializers.ValidationError('Select a valid active bank account.')
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('bank_account_id') is None and BankAccount.get_default() is None:
+            raise serializers.ValidationError({'bank_account_id': 'No default bank account is configured.'})
+        return attrs
 
 
 class ExpenseRequestSerializer(serializers.ModelSerializer):
@@ -255,10 +323,26 @@ class CreditReviewSerializer(serializers.Serializer):
 
 
 class CreditRepaymentSerializer(serializers.ModelSerializer):
+    bank_account_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
     class Meta:
         model = CreditRepayment
-        fields = ['id', 'credit_request', 'amount', 'recorded_by', 'created_at']
+        fields = ['id', 'credit_request', 'amount', 'bank_account_id', 'recorded_by', 'created_at']
         read_only_fields = ['recorded_by', 'created_at']
+
+    def validate_bank_account_id(self, value):
+        if not BankAccount.objects.filter(id=value, is_active=True).exists():
+            raise serializers.ValidationError('Select a valid active bank account.')
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('bank_account_id') is None and BankAccount.get_default() is None:
+            raise serializers.ValidationError({'bank_account_id': 'No default bank account is configured.'})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('bank_account_id', None)
+        return super().create(validated_data)
 
 
 class MonthlyReportSerializer(serializers.Serializer):

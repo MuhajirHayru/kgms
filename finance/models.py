@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Sum
 from students.models import Parent
 from accounts.models import User
 
@@ -168,6 +169,13 @@ class LedgerEntry(models.Model):
     )
 
     account = models.ForeignKey(SchoolAccount, on_delete=models.CASCADE, related_name="entries")
+    bank_account = models.ForeignKey(
+        "BankAccount",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ledger_entries",
+    )
     entry_type = models.CharField(max_length=30, choices=ENTRY_TYPE_CHOICES, default="OTHER")
     amount_delta = models.DecimalField(max_digits=14, decimal_places=2)
     description = models.TextField(blank=True, default="")
@@ -328,3 +336,59 @@ class Announcement(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.audience})"
+
+
+class BankAccount(models.Model):
+    account_name = models.CharField(max_length=120)
+    bank_name = models.CharField(max_length=120)
+    account_holder_name = models.CharField(max_length=120)
+    account_number = models.CharField(max_length=50, unique=True)
+    branch_name = models.CharField(max_length=120, blank=True, default="")
+    swift_code = models.CharField(max_length=50, blank=True, default="")
+    initial_balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    current_balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["bank_name", "account_name", "id"]
+
+    def __str__(self):
+        return f"{self.bank_name} - {self.account_name}"
+
+    @classmethod
+    def get_default(cls):
+        default_account = cls.objects.filter(is_active=True, is_default=True).order_by("id").first()
+        if default_account:
+            return default_account
+        cbe_account = cls.objects.filter(
+            is_active=True,
+            bank_name__iexact="Commercial Bank of Ethiopia",
+        ).order_by("id").first()
+        if cbe_account:
+            return cbe_account
+        return cls.objects.filter(is_active=True).order_by("id").first()
+
+    @classmethod
+    def sync_school_account_balance(cls):
+        total_balance = cls.objects.aggregate(total=Sum("current_balance")).get("total") or 0
+        SchoolAccount.objects.update_or_create(
+            id=1,
+            defaults={
+                "current_balance": total_balance,
+                "is_initialized": cls.objects.exists(),
+            },
+        )
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            self.__class__.objects.exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+        self.__class__.sync_school_account_balance()
+
+    def delete(self, *args, **kwargs):
+        result = super().delete(*args, **kwargs)
+        self.__class__.sync_school_account_balance()
+        return result

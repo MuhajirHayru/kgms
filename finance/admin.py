@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    BankAccount,
     Bonus,
     CreditRepayment,
     CreditRequest,
@@ -61,9 +62,26 @@ class SchoolAccountAdmin(admin.ModelAdmin):
     list_display = ('id', 'current_balance', 'is_initialized', 'updated_at')
 
 
+@admin.register(BankAccount)
+class BankAccountAdmin(admin.ModelAdmin):
+    list_display = (
+        'bank_name',
+        'account_name',
+        'account_holder_name',
+        'account_number',
+        'initial_balance',
+        'current_balance',
+        'is_active',
+        'is_default',
+        'updated_at',
+    )
+    list_filter = ('is_active', 'is_default', 'bank_name')
+    search_fields = ('bank_name', 'account_name', 'account_holder_name', 'account_number')
+
+
 @admin.register(LedgerEntry)
 class LedgerEntryAdmin(admin.ModelAdmin):
-    list_display = ('entry_type', 'amount_delta', 'created_by', 'created_at')
+    list_display = ('entry_type', 'bank_account', 'amount_delta', 'created_by', 'created_at')
     list_filter = ('entry_type',)
 
 

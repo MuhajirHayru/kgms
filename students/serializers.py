@@ -4,6 +4,7 @@ import random
 from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
+from finance.models import BankAccount
 from .models import (
     GradeCapacitySetting,
     Invoice,
@@ -80,6 +81,7 @@ class StudentSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True
     )
+    bank_account_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     certificate_files = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -89,7 +91,7 @@ class StudentSerializer(serializers.ModelSerializer):
             'transport', 'address', 'emergency_contact',
             'parent', 'parent_id', 'class_teacher', 'class_name', 'active',
             'student_photo', 'certificates', 'certificate_files', 'monthly_tuition_fee',
-            'registration_fee', 'transport_fee',
+            'registration_fee', 'transport_fee', 'bank_account_id',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -126,6 +128,16 @@ class StudentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"address": ["Address is required when transport is BUS."]}
             )
+        if self.instance is None:
+            bank_account_id = attrs.get("bank_account_id")
+            if bank_account_id is not None and not BankAccount.objects.filter(id=bank_account_id, is_active=True).exists():
+                raise serializers.ValidationError(
+                    {"bank_account_id": ["Select a valid active bank account."]}
+                )
+            if bank_account_id is None and BankAccount.get_default() is None:
+                raise serializers.ValidationError(
+                    {"bank_account_id": ["No default bank account is configured."]}
+                )
         return attrs
 
     def _get_monthly_fee(self, category, fee_setting):
@@ -145,6 +157,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         certificate_files = validated_data.pop("certificates", [])
+        bank_account_id = validated_data.pop("bank_account_id", None)
         fee_setting = StudentFeeSetting.get_current()
         category = validated_data["category"]
         transport = validated_data["transport"]
@@ -170,6 +183,7 @@ class StudentSerializer(serializers.ModelSerializer):
             student_label = _student_report_label(student)
             if student.registration_fee > 0:
                 record_account_transaction(
+                    bank_account=bank_account_id,
                     amount_delta=student.registration_fee,
                     entry_type="REGISTRATION_FEE",
                     description=f"Registration fee received for {student_label} ({student.category}).",
@@ -178,6 +192,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
             if student.transport_fee > 0:
                 record_account_transaction(
+                    bank_account=bank_account_id,
                     amount_delta=student.transport_fee,
                     entry_type="TRANSPORT_FEE",
                     description=f"Transport fee received for {student_label} (BUS).",
@@ -199,6 +214,7 @@ class StudentSerializer(serializers.ModelSerializer):
                     paid_by=created_by,
                 )
                 record_account_transaction(
+                    bank_account=bank_account_id,
                     amount_delta=student.monthly_tuition_fee,
                     entry_type="MONTHLY_FEE",
                     description=f"Monthly fee received for {student_label} ({month}).",
@@ -267,11 +283,26 @@ class PaymentSerializer(serializers.ModelSerializer):
         queryset=Invoice.objects.all(), source='invoice', write_only=True
     )
     paid_by = serializers.StringRelatedField(read_only=True)  # show user who paid
+    bank_account_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Payment
-        fields = ['id', 'invoice', 'invoice_id', 'amount', 'paid_at', 'paid_by']
+        fields = ['id', 'invoice', 'invoice_id', 'amount', 'bank_account_id', 'paid_at', 'paid_by']
         read_only_fields = ['paid_at', 'paid_by']
+
+    def validate_bank_account_id(self, value):
+        if not BankAccount.objects.filter(id=value, is_active=True).exists():
+            raise serializers.ValidationError("Select a valid active bank account.")
+        return value
+
+    def validate(self, attrs):
+        if attrs.get("bank_account_id") is None and BankAccount.get_default() is None:
+            raise serializers.ValidationError({"bank_account_id": "No default bank account is configured."})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("bank_account_id", None)
+        return super().create(validated_data)
 
 
 class PenaltySettingSerializer(serializers.ModelSerializer):

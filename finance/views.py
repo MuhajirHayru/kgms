@@ -14,6 +14,7 @@ from employees.models import Attendance, Employee
 
 from .models import (
     Announcement,
+    BankAccount,
     Bonus,
     CreditRequest,
     DashboardNotification,
@@ -28,6 +29,7 @@ from .models import (
 )
 from .serializers import (
     AnnouncementSerializer,
+    BankAccountSerializer,
     BonusSerializer,
     CreditRepaymentSerializer,
     CreditRequestSerializer,
@@ -125,6 +127,12 @@ def _announcement_recipients(audience):
     return User.objects.all()
 
 
+def _get_active_bank_account(bank_account_id):
+    if bank_account_id in (None, "", "null"):
+        return BankAccount.get_default()
+    return BankAccount.objects.filter(id=bank_account_id, is_active=True).first()
+
+
 # -------------------------------
 # School Account + Ledger + Reports
 # -------------------------------
@@ -140,6 +148,12 @@ class SchoolAccountInitializeView(APIView):
     permission_classes = [IsAuthenticated, IsDirectorOrAccountant]
 
     def post(self, request):
+        if BankAccount.objects.exists():
+            return Response(
+                {'error': 'School balance is now managed from bank accounts. Create bank accounts with initial balances instead.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = InitializeSchoolAccountSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -170,7 +184,9 @@ class ManualIncomeCreateView(APIView):
 
         amount = serializer.validated_data['amount']
         description = serializer.validated_data.get('description', '')
+        bank_account = _get_active_bank_account(serializer.validated_data['bank_account_id'])
         account, _ = record_account_transaction(
+            bank_account=bank_account,
             amount_delta=amount,
             entry_type='MANUAL_INCOME',
             description=description or 'Manual income recorded.',
@@ -179,19 +195,45 @@ class ManualIncomeCreateView(APIView):
         return Response(SchoolAccountSerializer(account).data, status=status.HTTP_201_CREATED)
 
 
+class BankAccountListCreateView(generics.ListCreateAPIView):
+    def get_queryset(self):
+        queryset = BankAccount.objects.all()
+        is_active = self.request.query_params.get('is_active')
+        if is_active in {'true', 'false'}:
+            queryset = queryset.filter(is_active=(is_active == 'true'))
+        return queryset
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAuthenticated(), IsDirectorOrSuperuser()]
+        return [IsAuthenticated(), IsDirectorOrAccountant()]
+
+    def get_serializer_class(self):
+        return BankAccountSerializer
+
+
+class BankAccountDetailView(generics.RetrieveUpdateAPIView):
+    queryset = BankAccount.objects.all()
+    serializer_class = BankAccountSerializer
+    permission_classes = [IsAuthenticated, IsDirectorOrSuperuser]
+
+
 class LedgerEntryListView(generics.ListAPIView):
     serializer_class = LedgerEntrySerializer
     permission_classes = [IsAuthenticated, IsDirectorOrAccountant]
 
     def get_queryset(self):
         month = self.request.query_params.get('month')  # YYYY-MM
-        qs = LedgerEntry.objects.select_related('created_by')
+        bank_account_id = self.request.query_params.get('bank_account_id')
+        qs = LedgerEntry.objects.select_related('created_by', 'bank_account')
         if month:
             try:
                 start, end = _month_bounds(month)
                 qs = qs.filter(created_at__date__gte=start, created_at__date__lte=end)
             except Exception:
                 pass
+        if bank_account_id:
+            qs = qs.filter(bank_account_id=bank_account_id)
         return qs
 
 
@@ -200,6 +242,7 @@ class MonthlyReportView(APIView):
 
     def get(self, request):
         month = request.query_params.get('month')
+        bank_account_id = request.query_params.get('bank_account_id')
         if not month:
             month = timezone.localdate().strftime('%Y-%m')
 
@@ -208,7 +251,9 @@ class MonthlyReportView(APIView):
         except Exception:
             return Response({'error': 'Invalid month format. Use YYYY-MM.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        entries = LedgerEntry.objects.filter(created_at__date__gte=start, created_at__date__lte=end)
+        entries = LedgerEntry.objects.filter(created_at__date__gte=start, created_at__date__lte=end).select_related('bank_account', 'created_by')
+        if bank_account_id:
+            entries = entries.filter(bank_account_id=bank_account_id)
         total_income = entries.filter(amount_delta__gt=0).aggregate(total=Sum('amount_delta')).get('total') or Decimal('0')
         total_expense_abs = entries.filter(amount_delta__lt=0).aggregate(total=Sum('amount_delta')).get('total') or Decimal('0')
         total_expense = abs(total_expense_abs)
@@ -282,6 +327,7 @@ class PaymentCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
+        bank_account = _get_active_bank_account(serializer.validated_data['bank_account_id'])
         payment = serializer.save(paid_by=self.request.user)
         invoice = payment.invoice
         paid_total = invoice.payments.aggregate(total=Sum('paid_amount')).get('total') or Decimal('0')
@@ -290,6 +336,7 @@ class PaymentCreateView(generics.CreateAPIView):
             invoice.save(update_fields=['is_paid'])
 
         record_account_transaction(
+            bank_account=bank_account,
             amount_delta=payment.paid_amount,
             entry_type='MANUAL_INCOME',
             description=f'Finance payment received for invoice {invoice.id}.',
@@ -390,6 +437,10 @@ class ExpenseMarkPaidView(APIView):
     permission_classes = [IsAuthenticated, IsAccountant]
 
     def patch(self, request, pk):
+        bank_account = _get_active_bank_account(request.data.get('bank_account_id'))
+        if not bank_account:
+            return Response({'error': 'Select a valid active bank account.'}, status=status.HTTP_400_BAD_REQUEST)
+
         expense = ExpenseRequest.objects.filter(pk=pk).first()
         if not expense:
             return Response({'error': 'Expense request not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -403,6 +454,7 @@ class ExpenseMarkPaidView(APIView):
         expense.save(update_fields=['status', 'paid_by', 'paid_at'])
 
         record_account_transaction(
+            bank_account=bank_account,
             amount_delta=-expense.amount,
             entry_type='EXPENSE_PAYMENT',
             description=f'Expense paid: {expense.title} ({expense.category}). Reason: {expense.reason}',
@@ -493,6 +545,10 @@ class CreditGiveView(APIView):
     permission_classes = [IsAuthenticated, IsAccountant]
 
     def patch(self, request, pk):
+        bank_account = _get_active_bank_account(request.data.get('bank_account_id'))
+        if not bank_account:
+            return Response({'error': 'Select a valid active bank account.'}, status=status.HTTP_400_BAD_REQUEST)
+
         credit = CreditRequest.objects.filter(pk=pk).select_related('employee', 'employee__user').first()
         if not credit:
             return Response({'error': 'Credit request not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -506,6 +562,7 @@ class CreditGiveView(APIView):
         credit.save(update_fields=['status', 'given_by', 'given_at'])
 
         record_account_transaction(
+            bank_account=bank_account,
             amount_delta=-credit.amount,
             entry_type='CREDIT_GIVEN',
             description=(
@@ -529,6 +586,7 @@ class CreditRepaymentCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsDirectorOrAccountant]
 
     def perform_create(self, serializer):
+        bank_account = _get_active_bank_account(serializer.validated_data['bank_account_id'])
         repayment = serializer.save(recorded_by=self.request.user)
         credit = repayment.credit_request
 
@@ -538,6 +596,7 @@ class CreditRepaymentCreateView(generics.CreateAPIView):
         credit.save(update_fields=['total_repaid', 'status'])
 
         record_account_transaction(
+            bank_account=bank_account,
             amount_delta=repayment.amount,
             entry_type='CREDIT_REPAYMENT',
             description=(
@@ -739,6 +798,10 @@ class PayrollPayView(APIView):
     permission_classes = [IsAuthenticated, IsAccountant]
 
     def patch(self, request, pk):
+        bank_account = _get_active_bank_account(request.data.get('bank_account_id'))
+        if not bank_account:
+            return Response({'error': 'Select a valid active bank account.'}, status=status.HTTP_400_BAD_REQUEST)
+
         payroll = Payroll.objects.filter(pk=pk).select_related('employee', 'employee__user').first()
         if not payroll:
             return Response({'error': 'Payroll not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -750,6 +813,7 @@ class PayrollPayView(APIView):
         payroll.save(update_fields=['status'])
 
         record_account_transaction(
+            bank_account=bank_account,
             amount_delta=-payroll.net_salary,
             entry_type='SALARY_PAYMENT',
             description=f'Salary paid for {payroll.employee.user.full_name or payroll.employee.user.phone_number} ({payroll.month}).',

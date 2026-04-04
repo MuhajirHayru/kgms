@@ -213,10 +213,12 @@ class PaymentListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
+        bank_account_id = serializer.validated_data["bank_account_id"]
         payment = serializer.save(paid_by=self.request.user)
         invoice = payment.invoice
         _apply_penalty(invoice)
         record_account_transaction(
+            bank_account=bank_account_id,
             amount_delta=payment.amount,
             entry_type="MONTHLY_FEE",
             description=(

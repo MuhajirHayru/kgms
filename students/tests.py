@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from finance.models import LedgerEntry, SchoolAccount
+from finance.models import BankAccount, LedgerEntry, SchoolAccount
 from students.models import GradeCapacitySetting, Invoice, Payment, Student, StudentFeeSetting
 
 
@@ -31,6 +31,14 @@ class StudentRegistrationFlowTests(APITestCase):
             grade_level="KG1",
             defaults={"max_students_per_section": 2},
         )
+        self.bank_account = BankAccount.objects.create(
+            bank_name="Bank of Abyssinia",
+            account_name="Admissions",
+            account_holder_name="KG Systems",
+            account_number="STU-001",
+            initial_balance=Decimal("0.00"),
+            current_balance=Decimal("0.00"),
+        )
 
     def test_student_registration_adds_fees_to_balance_and_report(self):
         with patch("students.serializers.random.choice", side_effect=lambda options: options[0]):
@@ -47,6 +55,7 @@ class StudentRegistrationFlowTests(APITestCase):
                     "address": "Main street",
                     "emergency_contact": "0999999999",
                     "parent_id": self.parent.id,
+                    "bank_account_id": self.bank_account.id,
                 },
                 format="json",
             )
@@ -95,6 +104,31 @@ class StudentRegistrationFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("grade_level", response.data)
+
+    def test_student_registration_uses_default_bank_when_bank_is_omitted(self):
+        self.bank_account.bank_name = "Commercial Bank of Ethiopia"
+        self.bank_account.is_default = True
+        self.bank_account.save(update_fields=["bank_name", "is_default"])
+
+        with patch("students.serializers.random.choice", side_effect=lambda options: options[0]):
+            response = self.client.post(
+                reverse("student-list-create"),
+                data={
+                    "first_name": "Liya",
+                    "last_name": "Kid",
+                    "dob": "2019-01-10",
+                    "gender": "F",
+                    "category": "KG",
+                    "grade_level": "KG1",
+                    "transport": "FOOT",
+                    "parent_id": self.parent.id,
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        latest_entry = LedgerEntry.objects.latest("created_at")
+        self.assertEqual(latest_entry.bank_account_id, self.bank_account.id)
 
 
 class StudentFeeSettingViewTests(APITestCase):
@@ -200,6 +234,14 @@ class StudentSectionAssignmentTests(APITestCase):
             grade_level="GRADE1",
             defaults={"max_students_per_section": 2},
         )
+        self.bank_account = BankAccount.objects.create(
+            bank_name="Abay Bank",
+            account_name="Students",
+            account_holder_name="KG Systems",
+            account_number="STU-002",
+            initial_balance=Decimal("0.00"),
+            current_balance=Decimal("0.00"),
+        )
 
     def test_students_are_split_into_sections_when_capacity_is_reached(self):
         payload = {
@@ -209,6 +251,7 @@ class StudentSectionAssignmentTests(APITestCase):
             "grade_level": "GRADE1",
             "transport": "FOOT",
             "parent_id": self.parent.id,
+            "bank_account_id": self.bank_account.id,
         }
 
         with patch("students.serializers.random.choice", side_effect=lambda options: options[-1]):
@@ -260,6 +303,7 @@ class StudentSectionAssignmentTests(APITestCase):
             "grade_level": "GRADE1",
             "transport": "FOOT",
             "parent_id": self.parent.id,
+            "bank_account_id": self.bank_account.id,
         }
 
         with patch("students.serializers.random.choice", side_effect=lambda options: options[-1]):
@@ -319,6 +363,14 @@ class MonthlyPaymentReportDescriptionTests(APITestCase):
             due_date="2026-03-05",
             is_paid=False,
         )
+        self.bank_account = BankAccount.objects.create(
+            bank_name="Dashen Bank",
+            account_name="Fees",
+            account_holder_name="KG Systems",
+            account_number="PAY-001",
+            initial_balance=Decimal("0.00"),
+            current_balance=Decimal("0.00"),
+        )
         self.client.force_authenticate(self.accountant)
 
     def test_manual_monthly_payment_report_includes_grade_and_section(self):
@@ -327,6 +379,7 @@ class MonthlyPaymentReportDescriptionTests(APITestCase):
             data={
                 "invoice_id": self.invoice.id,
                 "amount": "200.00",
+                "bank_account_id": self.bank_account.id,
             },
             format="json",
         )
