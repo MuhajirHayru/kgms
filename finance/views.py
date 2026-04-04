@@ -57,6 +57,7 @@ from .serializers import (
 )
 from .services import record_account_transaction
 from students.models import Student
+from transport.models import BusAssignment
 
 User = get_user_model()
 
@@ -900,7 +901,26 @@ class DriverStudentListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsDriver]
 
     def get_queryset(self):
-        return Student.objects.filter(active=True).select_related('parent').order_by('class_name', 'first_name', 'last_name')
+        if not hasattr(self.request.user, 'driver_profile'):
+            return Student.objects.none()
+
+        assignments = (
+            BusAssignment.objects.filter(bus__driver=self.request.user.driver_profile)
+            .select_related('student', 'student__parent', 'bus', 'bus__route')
+            .order_by('student_id', '-assigned_date', '-id')
+        )
+        latest_by_student = {}
+        for assignment in assignments:
+            latest_by_student.setdefault(assignment.student_id, assignment)
+
+        students = []
+        for assignment in latest_by_student.values():
+            student = assignment.student
+            student._prefetched_latest_bus_assignment = assignment
+            students.append(student)
+
+        students.sort(key=lambda student: (student.class_name or '', student.first_name or '', student.last_name or ''))
+        return students
 
 
 class AnnouncementCreateView(generics.CreateAPIView):

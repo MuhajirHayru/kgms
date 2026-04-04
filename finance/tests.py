@@ -4,8 +4,11 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from accounts.models import User
+from accounts.models import DriverProfile, User
+from employees.models import Employee
 from finance.models import BankAccount, LedgerEntry, SchoolAccount
+from students.models import Student
+from transport.models import Bus, BusAssignment, Route
 
 
 class MonthlyReportViewTests(APITestCase):
@@ -130,3 +133,82 @@ class BankAccountApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(BankAccount.objects.get(account_number="CBE-001").is_default)
+
+
+class DriverStudentListTests(APITestCase):
+    def setUp(self):
+        self.driver = User.objects.create_user(
+            phone_number="0911000012",
+            password="pass1234",
+            role="DRIVER",
+            full_name="Driver One",
+        )
+        self.parent = User.objects.create_user(
+            phone_number="0911000013",
+            password="pass1234",
+            role="PARENT",
+            full_name="Parent Driver",
+        )
+        self.teacher = User.objects.create_user(
+            phone_number="0911000014",
+            password="pass1234",
+            role="TEACHER",
+            full_name="Teacher Driver",
+        )
+        self.other_parent = User.objects.create_user(
+            phone_number="0911000015",
+            password="pass1234",
+            role="PARENT",
+            full_name="Other Parent Driver",
+        )
+        self.driver_profile = DriverProfile.objects.create(user=self.driver, license_number="DRV-101")
+        self.teacher_employee = Employee.objects.create(user=self.teacher, role="TEACHER", salary="1000.00")
+        self.route = Route.objects.create(name="Driver Route")
+        self.bus = Bus.objects.create(
+            bus_number="BUS-20",
+            plate_number="AA-90909",
+            capacity=20,
+            driver=self.driver_profile,
+            route=self.route,
+        )
+        self.student = Student.objects.create(
+            first_name="Sami",
+            last_name="Kid",
+            dob="2018-03-03",
+            gender="M",
+            category="KG",
+            grade_level="KG3",
+            transport="BUS",
+            address="Bole",
+            emergency_contact="0913777777",
+            parent=self.parent,
+            class_teacher=self.teacher_employee,
+            class_name="KG3A",
+        )
+        self.unassigned_student = Student.objects.create(
+            first_name="Lidiya",
+            last_name="Kid",
+            dob="2018-04-04",
+            gender="F",
+            category="KG",
+            grade_level="KG3",
+            transport="BUS",
+            address="CMC",
+            emergency_contact="0913888888",
+            parent=self.other_parent,
+            class_teacher=self.teacher_employee,
+            class_name="KG3A",
+        )
+        BusAssignment.objects.create(student=self.student, bus=self.bus)
+        self.client.force_authenticate(self.driver)
+
+    def test_driver_sees_only_assigned_students_with_family_and_bus_info(self):
+        response = self.client.get(reverse("driver-student-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["student_name"], "Sami Kid")
+        self.assertEqual(response.data[0]["parent_name"], "Parent Driver")
+        self.assertEqual(response.data[0]["address"], "Bole")
+        self.assertEqual(response.data[0]["bus_number"], "BUS-20")
+        self.assertEqual(response.data[0]["route_name"], "Driver Route")

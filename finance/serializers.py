@@ -361,6 +361,9 @@ class DriverStudentDetailSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     parent_name = serializers.CharField(source='parent.full_name', read_only=True)
     parent_phone = serializers.CharField(source='parent.phone_number', read_only=True)
+    bus_number = serializers.SerializerMethodField()
+    bus_plate_number = serializers.SerializerMethodField()
+    route_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
@@ -373,10 +376,33 @@ class DriverStudentDetailSerializer(serializers.ModelSerializer):
             'emergency_contact',
             'parent_name',
             'parent_phone',
+            'bus_number',
+            'bus_plate_number',
+            'route_name',
         ]
 
     def get_student_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip()
+
+    def _latest_assignment(self, obj):
+        assignment = getattr(obj, '_prefetched_latest_bus_assignment', None)
+        if assignment is not None:
+            return assignment
+        return obj.bus_assignments.select_related('bus', 'bus__route').order_by('-assigned_date', '-id').first()
+
+    def get_bus_number(self, obj):
+        assignment = self._latest_assignment(obj)
+        return assignment.bus.bus_number if assignment and assignment.bus_id else None
+
+    def get_bus_plate_number(self, obj):
+        assignment = self._latest_assignment(obj)
+        return assignment.bus.plate_number if assignment and assignment.bus_id else None
+
+    def get_route_name(self, obj):
+        assignment = self._latest_assignment(obj)
+        if assignment and assignment.bus_id and assignment.bus.route_id:
+            return assignment.bus.route.name
+        return None
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):

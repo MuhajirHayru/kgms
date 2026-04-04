@@ -53,7 +53,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
 ]
-ASGI_APPLICATION = "kgmsystems.asgi.application"
+ASGI_APPLICATION = "kgsystems.asgi.application"
 AUTH_USER_MODEL = 'accounts.User'
 AUTHENTICATION_BACKENDS = [
     'accounts.backends.PhoneOrSuperuserUsernameBackend',
